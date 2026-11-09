@@ -5,6 +5,7 @@ go 1.25.1
 require (
 	gioui.org v0.9.1-0.20251215212054-7bcb315ee174
 	git.wow.st/gmp/jni v0.0.0-20210610011705-34026c7e22d0
+	github.com/Eyevinn/mp4ff v0.55.0
 	github.com/Ghibranalj/webview_go v0.0.0-20251019170756-f933bf214be3
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
@@ -13,11 +14,13 @@ require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/gioui-plugins/gio-plugins v0.9.2
 	github.com/glebarez/sqlite v1.11.0
+	github.com/grafov/m3u8 v0.11.1
 	github.com/guohuiyuan/music-lib v1.1.2-0.20261109063824-af5e6d8e0479
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/liuzl/gocc v0.0.0-20231231122217-0372e1059ca5
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.53.0
+	golang.org/x/sync v0.21.0
 	golang.org/x/sys v0.46.0
 	golang.org/x/text v0.39.0
 	gorm.io/gorm v1.31.1
@@ -87,7 +90,6 @@ require (
 	golang.org/x/image v0.26.0 // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 	modernc.org/libc v1.67.6 // indirect

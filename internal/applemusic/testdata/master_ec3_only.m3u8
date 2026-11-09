@@ -1,0 +1,6 @@
+#EXTM3U
+#EXT-X-VERSION:6
+#EXT-X-STREAM-INF:BANDWIDTH=2800000,CODECS="ec-3",AUDIO="audio-atmos-2768"
+P1_atmos/prog_index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=800000,CODECS="ac-3",AUDIO="audio-ac3-640"
+P1_ac3/prog_index.m3u8
