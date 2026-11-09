@@ -183,7 +183,7 @@ echo 123456 > ./data/wrapper/2fa.txt
 
 登录成功后令牌保存在 `./data/wrapper`，之后重启无需再次登录，`.env` 里的账号密码可以清空。可用 `docker compose logs -f wrapper` 查看登录进度。
 
-**不用 Docker 时**：自行运行 wrapper-lite（或 `wrapper-lite-qemu`），然后在 Web“设置 → Apple Music”里填写 wrapper 地址（如 `http://127.0.0.1:12340`），或设置环境变量 `MUSIC_DL_APPLE_WRAPPER_URL`。环境变量优先于设置页；TUI 只能通过环境变量或已保存的设置启用。
+**不用 Docker 时**：自行运行 wrapper-lite（或 `wrapper-lite-qemu`），然后在 Web“设置 → 平台 Cookie → Apple Music 完整下载（wrapper-lite）”里填写 wrapper 地址（如 `http://127.0.0.1:12340`），或设置环境变量 `MUSIC_DL_APPLE_WRAPPER_URL`。环境变量优先于设置页；TUI 只能通过环境变量或已保存的设置启用。
 
 **音质**
 
