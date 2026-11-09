@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -44,7 +45,7 @@ type KeyTemplate struct {
 }
 
 type envelope struct {
-	Code int             `json:"code"`
+	Code *int            `json:"code"`
 	Msg  string          `json:"msg"`
 	Data json.RawMessage `json:"data"`
 }
@@ -61,7 +62,7 @@ func getJSON[T any](ctx context.Context, c *Client, endpoint string, q url.Value
 	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
-		return zero, fmt.Errorf("apple wrapper unreachable at %s: %w", c.baseURL, err)
+		return zero, &unreachableError{err: err}
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -77,11 +78,15 @@ func getJSON[T any](ctx context.Context, c *Client, endpoint string, q url.Value
 		}
 		return zero, fmt.Errorf("apple wrapper /%s: decode response: %w", endpoint, err)
 	}
-	if env.Code != 0 {
-		return zero, &APIError{Endpoint: endpoint, Code: env.Code, Msg: env.Msg}
+	if env.Code != nil && *env.Code != 0 {
+		return zero, &APIError{Endpoint: endpoint, Code: *env.Code, Msg: env.Msg}
 	}
 	if !ok {
 		return zero, &APIError{Endpoint: endpoint, Code: resp.StatusCode, Msg: http.StatusText(resp.StatusCode)}
+	}
+	if env.Code == nil {
+		// wrapper-lite always sends code; without it this is some other JSON service.
+		return zero, fmt.Errorf("%w: /%s response has no code field", ErrNotWrapper, endpoint)
 	}
 	var data T
 	if len(env.Data) > 0 {
@@ -91,6 +96,25 @@ func getJSON[T any](ctx context.Context, c *Client, endpoint string, q url.Value
 	}
 	return data, nil
 }
+
+// unreachableError reports a transport failure without the wrapper address or
+// resolved IPs: download errors reach anonymous /download callers, and the
+// address is the account's key-fetching capability.
+type unreachableError struct{ err error }
+
+func (e *unreachableError) Error() string {
+	reason := "connection failed"
+	var ne net.Error
+	switch {
+	case errors.Is(e.err, context.Canceled):
+		reason = "canceled"
+	case errors.Is(e.err, context.DeadlineExceeded), errors.As(e.err, &ne) && ne.Timeout():
+		reason = "timeout"
+	}
+	return "apple wrapper unreachable: " + reason
+}
+
+func (e *unreachableError) Unwrap() error { return e.err }
 
 func checkAdamID(adamID string) error {
 	if !adamIDPattern.MatchString(adamID) {

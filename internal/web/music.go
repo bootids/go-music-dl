@@ -561,9 +561,14 @@ func inspectFailurePayload(retryable bool, reason string, retryAfter time.Durati
 
 func inspectSuccessPayload(source, urlStr, size, bitrate string) gin.H {
 	src := strings.TrimSpace(source)
-	previewOnly := strings.EqualFold(src, "spotify") || (strings.EqualFold(src, "apple") && !core.AppleWrapperConfigured())
+	appleFull := strings.EqualFold(src, "apple") && core.AppleWrapperConfigured()
+	previewOnly := strings.EqualFold(src, "spotify") || (strings.EqualFold(src, "apple") && !appleFull)
 	if previewOnly {
 		bitrate = "-"
+	}
+	if appleFull {
+		// 探测的是 30 秒试听，大小和码率都不代表 wrapper 下载的整曲。
+		size, bitrate = "-", "-"
 	}
 	return gin.H{
 		"valid":        true,

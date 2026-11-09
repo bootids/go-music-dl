@@ -116,10 +116,21 @@ func FetchFullAppleAudio(song *model.Song) ([]byte, error) {
 	return FetchFullAppleAudioContext(context.Background(), song)
 }
 
+// appleDownloadSlots 限制同时进行的整曲下载数：每首都在内存里缓冲整曲（ffmpeg 重封装时再一份），
+// 且都走管理员的同一个 Apple 账号；/download 对匿名用户开放，不能无限并发。
+var appleDownloadSlots = make(chan struct{}, 2)
+
 // FetchFullAppleAudioContext 同 FetchFullAppleAudio，ctx 取消（如浏览器中止下载）时停止下载。
 func FetchFullAppleAudioContext(ctx context.Context, song *model.Song) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
+
+	select {
+	case appleDownloadSlots <- struct{}{}:
+		defer func() { <-appleDownloadSlots }()
+	case <-ctx.Done():
+		return nil, fmt.Errorf("apple full download: %w", ctx.Err())
+	}
 
 	res, err := appleDownload(ctx, applemusic.DownloadOptions{
 		Client:      NewAppleWrapperClient(),
@@ -193,9 +204,11 @@ func appleLyricFunc(cookie string) func(*model.Song) (string, error) {
 const applePreviewMaxSeconds = 35
 
 // isApplePreviewFile 判断已下载的文件是否是 30 秒试听（而歌曲本身更长）。
-// 读不出 MP4 时长时按“不是试听”处理。
+// 读不出 MP4 时长或歌曲时长未知时按“不是试听”处理。
 func isApplePreviewFile(song *model.Song, path string) bool {
-	if song.Duration > 0 && song.Duration <= applePreviewMaxSeconds+5 {
+	// 时长未知（如网页 save_local 不带时长）时无法区分试听和真正的短曲，按“不是试听”处理，
+	// 否则短曲每次都会被重新下载。
+	if song.Duration <= applePreviewMaxSeconds+5 {
 		return false
 	}
 	f, err := os.Open(path)

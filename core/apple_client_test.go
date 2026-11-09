@@ -9,7 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Eyevinn/mp4ff/aac"
 	"github.com/Eyevinn/mp4ff/mp4"
@@ -273,5 +275,77 @@ func TestAppleDedupReplacesPreview(t *testing.T) {
 	index = DownloadDedupIndex{SongKey(song): "full.m4a"}
 	if !IsSongStillDownloaded(song, index, dir) {
 		t.Fatal("full track not skipped")
+	}
+}
+
+// Full downloads hold whole songs in memory and use one Apple account, so
+// concurrent requests must queue on appleDownloadSlots.
+func TestAppleFullDownloadConcurrencyLimit(t *testing.T) {
+	setupAppleConfigForTest(t)
+	t.Setenv(AppleWrapperEnvURL, "http://127.0.0.1:1")
+	t.Setenv("MUSIC_DL_FFMPEG", filepath.Join(t.TempDir(), "missing-ffmpeg"))
+
+	var mu sync.Mutex
+	active, peak := 0, 0
+	release := make(chan struct{})
+	stubAppleDownload(t, func(_ context.Context, _ applemusic.DownloadOptions) (*applemusic.Result, error) {
+		mu.Lock()
+		active++
+		if active > peak {
+			peak = active
+		}
+		mu.Unlock()
+		<-release
+		mu.Lock()
+		active--
+		mu.Unlock()
+		return &applemusic.Result{Data: []byte("fmp4"), Codec: "alac"}, nil
+	})
+
+	const n = 5
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := FetchFullAppleAudio(&model.Song{Source: "apple", ID: "123"}); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	if limit := cap(appleDownloadSlots); peak != limit {
+		t.Fatalf("peak concurrent downloads = %d, want %d", peak, limit)
+	}
+
+	// A caller that gives up while queued gets ctx.Err, not a hung request.
+	for i := 0; i < cap(appleDownloadSlots); i++ {
+		appleDownloadSlots <- struct{}{}
+	}
+	defer func() {
+		for i := 0; i < cap(appleDownloadSlots); i++ {
+			<-appleDownloadSlots
+		}
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := FetchFullAppleAudioContext(ctx, &model.Song{Source: "apple", ID: "123"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("queued cancel: got %v, want context.Canceled", err)
+	}
+}
+
+// Without a known song duration a short saved file may be a real short track,
+// so dedup must keep it instead of re-downloading it every time.
+func TestAppleDedupKeepsShortTrackWithUnknownDuration(t *testing.T) {
+	setupAppleConfigForTest(t)
+	t.Setenv(AppleWrapperEnvURL, "http://127.0.0.1:1")
+	dir := t.TempDir()
+	writeMP4WithDuration(t, filepath.Join(dir, "short.m4a"), 28)
+	song := &model.Song{Source: "apple", ID: "123", Name: "N", Artist: "A"}
+	index := DownloadDedupIndex{SongKey(song): "short.m4a"}
+	if !IsSongStillDownloaded(song, index, dir) {
+		t.Fatal("short track with unknown duration was treated as a preview")
 	}
 }

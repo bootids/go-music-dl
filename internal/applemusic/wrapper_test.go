@@ -3,6 +3,8 @@ package applemusic_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -124,5 +126,26 @@ func TestWrapperUnreachable(t *testing.T) {
 	_, err := applemusic.NewClient(base, nil).Status(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "unreachable") {
 		t.Fatalf("want unreachable error, got %v", err)
+	}
+	// The message reaches anonymous /download callers: no wrapper address.
+	host := strings.TrimPrefix(base, "http://")
+	hostname, _, _ := strings.Cut(host, ":")
+	if strings.Contains(err.Error(), hostname) {
+		t.Fatalf("error leaks wrapper address: %v", err)
+	}
+}
+
+func TestWrapperNotWrapperJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer srv.Close()
+	c := applemusic.NewClient(srv.URL, nil)
+	if _, err := c.Status(context.Background()); !errors.Is(err, applemusic.ErrNotWrapper) {
+		t.Fatalf("Status: want ErrNotWrapper, got %v", err)
+	}
+	if _, err := c.M3U8(context.Background(), "123"); !errors.Is(err, applemusic.ErrNotWrapper) {
+		t.Fatalf("M3U8: want ErrNotWrapper, got %v", err)
 	}
 }

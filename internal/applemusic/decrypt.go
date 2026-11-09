@@ -301,6 +301,18 @@ func readFragment(r io.Reader, pos uint64) (*mp4.Fragment, uint64, error) {
 	}
 }
 
+// fullSamples wraps Fragment.GetFullSamples, which slices mdat by the trun
+// sample sizes without bounds checks: a malformed fragment must fail this
+// download instead of panicking in a decrypt worker and killing the process.
+func fullSamples(frag *mp4.Fragment, trex *mp4.TrexBox) (samples []mp4.FullSample, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			samples, err = nil, fmt.Errorf("malformed fragment: %v", r)
+		}
+	}()
+	return frag.GetFullSamples(trex)
+}
+
 // decryptFragment decrypts all protected samples of frag in place and strips
 // the encryption boxes.
 func decryptFragment(frag *mp4.Fragment, tracks map[uint32]mp4.DecryptTrackInfo, dec SampleDecrypter) error {
@@ -349,7 +361,7 @@ func decryptFragment(frag *mp4.Fragment, tracks map[uint32]mp4.DecryptTrackInfo,
 			return errors.New("no senc box in traf")
 		}
 
-		samples, err := frag.GetFullSamples(ti.Trex)
+		samples, err := fullSamples(frag, ti.Trex)
 		if err != nil {
 			return err
 		}

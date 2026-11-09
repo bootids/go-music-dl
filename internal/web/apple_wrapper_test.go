@@ -37,7 +37,9 @@ func getAppleWrapperStatusQuery(t *testing.T, query string) map[string]any {
 	r := gin.New()
 	r.GET("/apple/wrapper/status", appleWrapperStatusHandler)
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/apple/wrapper/status"+query, nil))
+	req := httptest.NewRequest(http.MethodGet, "/apple/wrapper/status"+query, nil)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status code = %d, body = %s", w.Code, w.Body.String())
 	}
@@ -56,8 +58,13 @@ func TestAppleInspectPreviewOnlyFollowsWrapperConfig(t *testing.T) {
 
 	fake := applemusictest.New(t)
 	t.Setenv(core.AppleWrapperEnvURL, fake.URL)
-	if got := inspectSuccessPayload("apple", "u", "1", "256")["preview_only"]; got != false {
-		t.Fatalf("configured preview_only = %v, want false", got)
+	full := inspectSuccessPayload("apple", "u", "1.0 MB", "33 kbps")
+	if full["preview_only"] != false {
+		t.Fatalf("configured preview_only = %v, want false", full["preview_only"])
+	}
+	// inspect probes the preview, so its size/bitrate must not be shown for the full track.
+	if full["size"] != "-" || full["bitrate"] != "-" {
+		t.Fatalf("configured size/bitrate = %v/%v, want -/-", full["size"], full["bitrate"])
 	}
 	if got := inspectSuccessPayload("spotify", "u", "1", "256")["preview_only"]; got != true {
 		t.Fatalf("spotify preview_only = %v, want true", got)
@@ -151,5 +158,21 @@ func TestAppleSettingsPayloadFields(t *testing.T) {
 	}
 	if payload["appleWrapperConfigured"] != true || payload["appleWrapperEnvOverride"] != false {
 		t.Fatalf("runtime flags = %v", payload)
+	}
+}
+
+// Probing a caller-supplied URL must come from the settings page, not a
+// cross-site navigation carrying the admin cookie.
+func TestAppleWrapperStatusURLRequiresSameOrigin(t *testing.T) {
+	useTempAppleConfig(t, "")
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/apple/wrapper/status", appleWrapperStatusHandler)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/apple/wrapper/status?url="+url.QueryEscape("http://169.254.169.254/x?y="), nil)
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status code = %d, want 403", w.Code)
 	}
 }

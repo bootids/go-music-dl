@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"testing"
 
@@ -372,4 +373,24 @@ func boxTypes(bs []mp4.Box) []string {
 		out[i] = b.Type()
 	}
 	return out
+}
+
+// A trun whose sample sizes overrun the mdat payload must fail the download,
+// not panic inside a decrypt worker goroutine.
+func TestDecryptStreamSampleSizeOverrun(t *testing.T) {
+	fx := buildFixture(t, 0)
+	in, err := mp4.DecodeFile(bytes.NewReader(fx.file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Segments[0].Fragments[0].Moof.Traf.Trun.Samples[0].Size = 1 << 20
+	var corrupt bytes.Buffer
+	if err := in.Encode(&corrupt); err != nil {
+		t.Fatal(err)
+	}
+	ks := &countingKeys{calls: map[string]int{}, fx: fx}
+	err = DecryptStream(context.Background(), bytes.NewReader(corrupt.Bytes()), &bytes.Buffer{}, fx.segs, ks.source)
+	if err == nil || !strings.Contains(err.Error(), "malformed fragment") {
+		t.Fatalf("got %v, want malformed fragment error", err)
+	}
 }

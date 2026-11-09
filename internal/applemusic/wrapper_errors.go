@@ -12,6 +12,8 @@ var (
 	ErrNoKeyTemplate = errors.New("apple wrapper returned no key template")
 	// ErrLyricsNotFound means /lyrics answered code 404.
 	ErrLyricsNotFound = errors.New("apple lyrics not found")
+	// ErrNotWrapper means the URL answered JSON that is not a wrapper-lite envelope.
+	ErrNotWrapper = errors.New("apple wrapper URL is not a wrapper-lite endpoint")
 	// ErrInvalidAdamID means the id is not a catalog adamId.
 	ErrInvalidAdamID = errors.New("invalid apple adamId")
 )

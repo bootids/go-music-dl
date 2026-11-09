@@ -158,6 +158,11 @@ func appleWrapperStatusHandler(c *gin.Context) {
 	ffmpegOK := ffmpegErr == nil
 	baseURL := core.AppleWrapperURL()
 	if typed, ok := c.GetQuery("url"); ok && !core.AppleWrapperEnvOverride() {
+		// 让服务端去请求调用方给的地址：只接受本站页面发起的请求，挡住跨站导航借管理员会话探测内网。
+		if !allowSameOriginWrite(c) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
 		baseURL = strings.TrimSpace(typed)
 		if baseURL != "" {
 			if err := core.ValidateAppleWrapperURL(baseURL); err != nil {
