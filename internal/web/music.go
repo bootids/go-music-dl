@@ -560,7 +560,8 @@ func inspectFailurePayload(retryable bool, reason string, retryAfter time.Durati
 }
 
 func inspectSuccessPayload(source, urlStr, size, bitrate string) gin.H {
-	previewOnly := strings.EqualFold(strings.TrimSpace(source), "spotify")
+	src := strings.TrimSpace(source)
+	previewOnly := strings.EqualFold(src, "spotify") || (strings.EqualFold(src, "apple") && !core.AppleWrapperConfigured())
 	if previewOnly {
 		bitrate = "-"
 	}
@@ -1281,6 +1282,22 @@ func RegisterMusicRoutes(api, configAPI *gin.RouterGroup) {
 
 			setDownloadHeader(c, result.Filename)
 			c.Data(200, result.ContentType, result.Data)
+			return
+		}
+
+		if source == "apple" && !streamPlayback && core.AppleWrapperConfigured() {
+			result, err := core.DownloadSongDataWithTemplate(tempSong, false, false, settings.DownloadFilenameTemplate)
+			if err != nil {
+				c.String(502, "Apple full download error: "+err.Error())
+				return
+			}
+			if core.WebDAVConfigured(settings) {
+				if err := core.UploadSongToWebDAV(settings, result.Filename, result.Data); err != nil {
+					c.Header("X-MusicDL-Warning", err.Error())
+				}
+			}
+			setDownloadHeader(c, result.Filename)
+			http.ServeContent(c.Writer, c.Request, result.Filename, time.Now(), bytes.NewReader(result.Data))
 			return
 		}
 

@@ -87,6 +87,8 @@ let webSettings = {
   sodaSignerToken: "",
   sodaClientDir: "",
   sodaLocalSignerAvailable: false,
+  appleWrapperUrl: "",
+  appleAudioQuality: "alac",
   vgChangeCover: false,
   vgChangeAudio: false,
   vgChangeLyric: false,
@@ -130,6 +132,8 @@ function normalizeWebSettings(raw) {
     sodaSignerToken: "",
     sodaClientDir: "",
     sodaLocalSignerAvailable: false,
+    appleWrapperUrl: "",
+    appleAudioQuality: "alac",
     vgChangeCover: false,
     vgChangeAudio: false,
     vgChangeLyric: false,
@@ -243,6 +247,19 @@ function normalizeWebSettings(raw) {
   }
   if (typeof raw.sodaLocalSignerAvailable === "boolean") {
     next.sodaLocalSignerAvailable = raw.sodaLocalSignerAvailable;
+  }
+  if (typeof raw.appleWrapperUrl === "string") {
+    next.appleWrapperUrl = raw.appleWrapperUrl.trim();
+  }
+  if (typeof raw.appleAudioQuality === "string") {
+    const quality = raw.appleAudioQuality.trim().toLowerCase();
+    next.appleAudioQuality = quality === "aac" ? "aac" : "alac";
+  }
+  if (typeof raw.appleWrapperConfigured === "boolean") {
+    next.appleWrapperConfigured = raw.appleWrapperConfigured;
+  }
+  if (typeof raw.appleWrapperEnvOverride === "boolean") {
+    next.appleWrapperEnvOverride = raw.appleWrapperEnvOverride;
   }
   if (typeof raw.vgChangeCover === "boolean") {
     next.vgChangeCover = raw.vgChangeCover;
@@ -811,6 +828,27 @@ function applyWebSettings(settings) {
     sodaLocalSignerState.textContent = webSettings.sodaLocalSignerAvailable
       ? "已检测到本机签名器：留空地址即可用。"
       : "未检测到本机签名器：请安装汽水官方客户端（或 Node.js），或填写下面的远程签名服务地址。";
+  }
+  const appleWrapperUrlInput = document.getElementById(
+    "setting-apple-wrapper-url",
+  );
+  const appleWrapperState = document.getElementById(
+    "setting-apple-wrapper-state",
+  );
+  if (appleWrapperUrlInput) {
+    appleWrapperUrlInput.value = webSettings.appleWrapperUrl;
+    appleWrapperUrlInput.disabled = !!webSettings.appleWrapperEnvOverride;
+  }
+  if (appleWrapperState) {
+    appleWrapperState.textContent = webSettings.appleWrapperEnvOverride
+      ? "已由环境变量 MUSIC_DL_APPLE_WRAPPER_URL 指定"
+      : "";
+  }
+  const appleAudioQualitySelect = document.getElementById(
+    "setting-apple-audio-quality",
+  );
+  if (appleAudioQualitySelect) {
+    appleAudioQualitySelect.value = webSettings.appleAudioQuality;
   }
   bindWebDAVSettingEvents();
   syncWebDAVVisibility();
@@ -5618,6 +5656,29 @@ async function pickDownloadFolder() {
 
 let openDownloadDirectoryInFlight = false;
 
+async function testAppleWrapper() {
+  const state = document.getElementById("setting-apple-wrapper-state");
+  if (!state) return;
+  state.textContent = "检测中…";
+  try {
+    const response = await fetch(`${API_ROOT}/apple/wrapper/status`, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    const ffmpeg = payload.ffmpeg ? "ffmpeg ✓" : "ffmpeg ✗";
+    if (response.ok && payload.ok) {
+      const regions = Array.isArray(payload.regions)
+        ? payload.regions.join(", ")
+        : "";
+      state.textContent = `已连接 · 区域 ${regions} · ${ffmpeg}`;
+    } else {
+      state.textContent = `${payload.error || `HTTP ${response.status}`} · ${ffmpeg}`;
+    }
+  } catch (error) {
+    state.textContent = String(error?.message || error);
+  }
+}
+
 async function openDownloadDirectory() {
   if (openDownloadDirectoryInFlight) return;
   openDownloadDirectoryInFlight = true;
@@ -5902,6 +5963,11 @@ async function saveCookies() {
         document.getElementById("setting-soda-signer-token")?.value || "",
       sodaClientDir:
         document.getElementById("setting-soda-client-dir")?.value || "",
+      appleWrapperUrl:
+        document.getElementById("setting-apple-wrapper-url")?.value || "",
+      appleAudioQuality:
+        document.getElementById("setting-apple-audio-quality")?.value ||
+        "alac",
       vgChangeCover: !!document.getElementById("setting-vg-change-cover")
         ?.checked,
       vgChangeAudio: !!document.getElementById("setting-vg-change-audio")

@@ -119,13 +119,35 @@ func publicWebSettings() core.WebSettings {
 type webSettingsPayload struct {
 	core.WebSettings
 	SodaLocalSignerAvailable bool `json:"sodaLocalSignerAvailable"`
+	AppleWrapperConfigured   bool `json:"appleWrapperConfigured"`
+	AppleWrapperEnvOverride  bool `json:"appleWrapperEnvOverride"`
 }
 
 func publicWebSettingsPayload() webSettingsPayload {
 	return webSettingsPayload{
 		WebSettings:              publicWebSettings(),
 		SodaLocalSignerAvailable: core.LocalSodaSignerAvailable(),
+		AppleWrapperConfigured:   core.AppleWrapperConfigured(),
+		AppleWrapperEnvOverride:  core.AppleWrapperEnvOverride(),
 	}
+}
+
+// appleWrapperStatusHandler 检测 wrapper-lite 是否可达并已登录，同时报告 ffmpeg 是否可用。
+func appleWrapperStatusHandler(c *gin.Context) {
+	_, ffmpegErr := core.ResolveFFmpegPath()
+	ffmpegOK := ffmpegErr == nil
+	if !core.AppleWrapperConfigured() {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "configured": false, "error": "未配置", "ffmpeg": ffmpegOK})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	regions, err := core.NewAppleWrapperClient().Status(ctx)
+	payload := gin.H{"ok": err == nil, "configured": true, "regions": regions, "ffmpeg": ffmpegOK}
+	if err != nil {
+		payload["error"] = err.Error()
+	}
+	c.JSON(http.StatusOK, payload)
 }
 
 func asciiDownloadFilenameFallback(filename string) string {
@@ -304,7 +326,7 @@ func cookieCaptureHints() map[string]cookieCaptureHint {
 		"apple": {
 			LoginURL: "https://music.apple.com",
 			Domain:   "amp-api.music.apple.com",
-			Hint:     "登录后播放一首歌并刷新页面，筛选该域请求；Cookie 中至少应包含 media-user-token。",
+			Hint:     "登录后播放一首歌并刷新页面，筛选该域请求；Cookie 中至少应包含 media-user-token；完整下载需在 设置 → Apple Music 配置 wrapper-lite 地址，Cookie 仅用于搜索",
 		},
 	}
 }
@@ -654,6 +676,7 @@ func StartWithOptions(port string, opts StartOptions) {
 		c.JSON(200, publicWebSettingsPayload())
 	})
 	configAPI.POST("/open_download_dir", openDownloadDirectoryHandler)
+	configAPI.GET("/apple/wrapper/status", appleWrapperStatusHandler)
 
 	RegisterMusicRoutes(api, configAPI)
 	RegisterQRLoginRoutes(configAPI)

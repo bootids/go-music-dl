@@ -1,0 +1,116 @@
+package web
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/guohuiyuan/go-music-dl/core"
+	"github.com/guohuiyuan/go-music-dl/internal/applemusic/applemusictest"
+)
+
+func useTempAppleConfig(t *testing.T, wrapperURL string) {
+	t.Helper()
+	if err := core.CloseConfigDB(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MUSIC_DL_CONFIG_DB", filepath.Join(t.TempDir(), "settings.db"))
+	t.Setenv(core.AppleWrapperEnvURL, wrapperURL)
+	t.Cleanup(func() {
+		if err := core.CloseConfigDB(); err != nil {
+			t.Error(err)
+		}
+	})
+}
+
+func getAppleWrapperStatus(t *testing.T) map[string]any {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/apple/wrapper/status", appleWrapperStatusHandler)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/apple/wrapper/status", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status code = %d, body = %s", w.Code, w.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+func TestAppleInspectPreviewOnlyFollowsWrapperConfig(t *testing.T) {
+	useTempAppleConfig(t, "")
+	if got := inspectSuccessPayload("apple", "u", "1", "256")["preview_only"]; got != true {
+		t.Fatalf("unconfigured preview_only = %v, want true", got)
+	}
+
+	fake := applemusictest.New(t)
+	t.Setenv(core.AppleWrapperEnvURL, fake.URL)
+	if got := inspectSuccessPayload("apple", "u", "1", "256")["preview_only"]; got != false {
+		t.Fatalf("configured preview_only = %v, want false", got)
+	}
+	if got := inspectSuccessPayload("spotify", "u", "1", "256")["preview_only"]; got != true {
+		t.Fatalf("spotify preview_only = %v, want true", got)
+	}
+}
+
+func TestAppleWrapperStatusRoute(t *testing.T) {
+	useTempAppleConfig(t, "")
+	payload := getAppleWrapperStatus(t)
+	if payload["ok"] != false || payload["configured"] != false || payload["error"] != "未配置" {
+		t.Fatalf("unconfigured payload = %v", payload)
+	}
+
+	fake := applemusictest.New(t)
+	fake.Regions = []string{"us"}
+	t.Setenv(core.AppleWrapperEnvURL, fake.URL)
+	payload = getAppleWrapperStatus(t)
+	regions, _ := payload["regions"].([]any)
+	if payload["ok"] != true || payload["configured"] != true || len(regions) != 1 || regions[0] != "us" {
+		t.Fatalf("configured payload = %v", payload)
+	}
+	if _, ok := payload["ffmpeg"].(bool); !ok {
+		t.Fatalf("ffmpeg field missing: %v", payload)
+	}
+
+	empty := applemusictest.New(t)
+	t.Setenv(core.AppleWrapperEnvURL, empty.URL)
+	payload = getAppleWrapperStatus(t)
+	if payload["ok"] != false || payload["configured"] != true {
+		t.Fatalf("not-logged-in payload = %v", payload)
+	}
+	if msg, _ := payload["error"].(string); msg == "" {
+		t.Fatalf("not-logged-in payload has no error: %v", payload)
+	}
+}
+
+func TestAppleSettingsPayloadFields(t *testing.T) {
+	useTempAppleConfig(t, "")
+	settings := core.GetWebSettings()
+	settings.AppleWrapperURL = "http://127.0.0.1:12340/"
+	settings.AppleAudioQuality = "AAC"
+	if err := core.SaveWebSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/settings", func(c *gin.Context) { c.JSON(200, publicWebSettingsPayload()) })
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/settings", nil))
+	var payload map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["appleWrapperUrl"] != "http://127.0.0.1:12340" || payload["appleAudioQuality"] != "aac" {
+		t.Fatalf("settings payload = %v", payload)
+	}
+	if payload["appleWrapperConfigured"] != true || payload["appleWrapperEnvOverride"] != false {
+		t.Fatalf("runtime flags = %v", payload)
+	}
+}
