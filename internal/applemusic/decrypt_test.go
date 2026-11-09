@@ -13,7 +13,12 @@ import (
 
 	"github.com/Eyevinn/mp4ff/aac"
 	"github.com/Eyevinn/mp4ff/mp4"
+
+	"github.com/guohuiyuan/go-music-dl/internal/applemusic/temari"
 )
+
+// The temari decryptor must plug into DecryptStream as a SampleDecrypter.
+var _ SampleDecrypter = (*temari.Template)(nil)
 
 // cbcDecrypter is a stand-in for *temari.Template: AES-128-CBC from the
 // constant IV, with the chain reset on every DecryptInto call.

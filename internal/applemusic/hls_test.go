@@ -98,8 +98,8 @@ func TestParseMediaPlaylist(t *testing.T) {
 		t.Fatalf("FileURL = %s, want %s", mp.FileURL, want)
 	}
 	want := []Segment{
-		{Offset: 1200, Length: 5000, KeyURI: prefetchURIFixture},
-		{Offset: 6200, Length: 5100, KeyURI: prefetchURIFixture},
+		{Offset: 1200, Length: 5000, KeyURI: PrefetchKeyURI},
+		{Offset: 6200, Length: 5100, KeyURI: PrefetchKeyURI},
 		{Offset: 11300, Length: 5200, KeyURI: "skd://1234567890/c23"},
 		{Offset: 16500, Length: 2300, KeyURI: "skd://1234567890/c23"},
 	}
@@ -122,7 +122,3 @@ func TestParseMediaPlaylistNoByteRange(t *testing.T) {
 		t.Fatalf("got %v, want ErrUnsupportedPlaylist", err)
 	}
 }
-
-// prefetchURIFixture mirrors PrefetchKeyURI (doc.go, owned by a sibling
-// step) so this file compiles on its own.
-const prefetchURIFixture = "skd://itunes.apple.com/P000000000/s1/e1"
