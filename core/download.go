@@ -330,6 +330,13 @@ func fetchMiguAudio(info *migu.DownloadInfo) ([]byte, error) {
 }
 
 func fetchSongAudio(song *model.Song) ([]byte, string, error) {
+	if song.Source == "apple" && AppleWrapperConfigured() {
+		data, err := FetchFullAppleAudio(song)
+		if err != nil {
+			return nil, "", err
+		}
+		return data, "audio/mp4", nil
+	}
 	if song.Source == "soda" {
 		finalData, err := FetchDecryptedSodaAudio(song)
 		if err != nil {

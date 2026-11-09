@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +77,8 @@ type WebSettings struct {
 	SodaSignerURL            string `json:"sodaSignerUrl"`
 	SodaSignerToken          string `json:"sodaSignerToken"`
 	SodaClientDir            string `json:"sodaClientDir"`
+	AppleWrapperURL          string `json:"appleWrapperUrl"`
+	AppleAudioQuality        string `json:"appleAudioQuality"`
 	VgChangeCover            bool   `json:"vgChangeCover"`
 	VgChangeAudio            bool   `json:"vgChangeAudio"`
 	VgChangeLyric            bool   `json:"vgChangeLyric"`
@@ -231,8 +234,9 @@ func defaultWebSettings() WebSettings {
 		LyricFontFamily:          DefaultLyricFontFamily,
 		LyricFontSize:            DefaultLyricFontSize,
 		// 默认不配远程签名服务：soda 包会优先用本机官方客户端的 bdms.node 签名。
-		SodaSignerURL:   "",
-		SodaSignerToken: "",
+		SodaSignerURL:     "",
+		SodaSignerToken:   "",
+		AppleAudioQuality: "alac",
 	})
 }
 
@@ -296,6 +300,11 @@ func normalizeWebSettings(settings WebSettings) WebSettings {
 	settings.SodaSignerURL = strings.TrimSpace(settings.SodaSignerURL)
 	settings.SodaSignerToken = strings.TrimSpace(settings.SodaSignerToken)
 	settings.SodaClientDir = normalizeSodaClientDir(settings.SodaClientDir)
+	settings.AppleWrapperURL = strings.TrimSuffix(strings.TrimSpace(settings.AppleWrapperURL), "/")
+	settings.AppleAudioQuality = strings.ToLower(strings.TrimSpace(settings.AppleAudioQuality))
+	if settings.AppleAudioQuality != "alac" && settings.AppleAudioQuality != "aac" {
+		settings.AppleAudioQuality = "alac"
+	}
 	settings.ShortcutPlayPause = normalizeShortcutBinding(settings.ShortcutPlayPause)
 	settings.ShortcutPrevious = normalizeShortcutBinding(settings.ShortcutPrevious)
 	settings.ShortcutNext = normalizeShortcutBinding(settings.ShortcutNext)
@@ -441,6 +450,13 @@ func normalizeShortcutKey(key string) string {
 }
 
 func validateWebSettings(settings WebSettings) error {
+	if settings.AppleWrapperURL != "" {
+		u, err := url.Parse(settings.AppleWrapperURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("%w: Apple wrapper 地址需为 http(s)://host:port", ErrInvalidWebSettings)
+		}
+	}
+
 	shortcuts := []struct {
 		name  string
 		value string

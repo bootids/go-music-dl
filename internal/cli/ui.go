@@ -257,7 +257,7 @@ func getLyricFunc(source string) func(*model.Song) (string, error) {
 	case "qianqian":
 		return qianqian.New(c).GetLyrics
 	case "apple":
-		return apple.New(c).GetLyrics
+		return core.GetLyricFunc("apple")
 	case "spotify":
 		return spotify.New(c).GetLyrics
 	default:
