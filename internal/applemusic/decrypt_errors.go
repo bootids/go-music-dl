@@ -11,6 +11,6 @@ var (
 	ErrUnsupportedPattern = errors.New("apple music: unsupported cbcs pattern")
 	// ErrUnsupportedScheme means a track is protected with a scheme other than cbcs.
 	ErrUnsupportedScheme = errors.New("apple music: unsupported protection scheme")
-	// ErrSegmentMismatch means the file has more fragments than the playlist has segments.
+	// ErrSegmentMismatch means the file has a different number of fragments than the playlist has segments.
 	ErrSegmentMismatch = errors.New("apple music: fragments do not match playlist segments")
 )

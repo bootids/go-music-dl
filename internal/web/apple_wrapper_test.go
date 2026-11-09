@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"testing"
 
@@ -27,12 +28,16 @@ func useTempAppleConfig(t *testing.T, wrapperURL string) {
 }
 
 func getAppleWrapperStatus(t *testing.T) map[string]any {
+	return getAppleWrapperStatusQuery(t, "")
+}
+
+func getAppleWrapperStatusQuery(t *testing.T, query string) map[string]any {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/apple/wrapper/status", appleWrapperStatusHandler)
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/apple/wrapper/status", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/apple/wrapper/status"+query, nil))
 	if w.Code != http.StatusOK {
 		t.Fatalf("status code = %d, body = %s", w.Code, w.Body.String())
 	}
@@ -89,6 +94,32 @@ func TestAppleWrapperStatusRoute(t *testing.T) {
 	}
 }
 
+// The settings page tests the typed (unsaved) URL; the env URL wins when set.
+func TestAppleWrapperStatusTypedURL(t *testing.T) {
+	useTempAppleConfig(t, "")
+	fake := applemusictest.New(t)
+	fake.Regions = []string{"jp"}
+	payload := getAppleWrapperStatusQuery(t, "?url="+url.QueryEscape(fake.URL+"/"))
+	if payload["ok"] != true || payload["configured"] != true {
+		t.Fatalf("typed URL payload = %v", payload)
+	}
+	payload = getAppleWrapperStatusQuery(t, "?url=127.0.0.1:12340")
+	if payload["ok"] != false || payload["configured"] != false {
+		t.Fatalf("malformed typed URL payload = %v", payload)
+	}
+	payload = getAppleWrapperStatusQuery(t, "?url=")
+	if payload["ok"] != false || payload["error"] != "未配置" {
+		t.Fatalf("empty typed URL payload = %v", payload)
+	}
+
+	empty := applemusictest.New(t)
+	t.Setenv(core.AppleWrapperEnvURL, empty.URL)
+	payload = getAppleWrapperStatusQuery(t, "?url="+url.QueryEscape(fake.URL))
+	if payload["ok"] != false {
+		t.Fatalf("env override ignored, payload = %v", payload)
+	}
+}
+
 func TestAppleSettingsPayloadFields(t *testing.T) {
 	useTempAppleConfig(t, "")
 	settings := core.GetWebSettings()
@@ -99,14 +130,22 @@ func TestAppleSettingsPayloadFields(t *testing.T) {
 	}
 
 	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.GET("/settings", func(c *gin.Context) { c.JSON(200, publicWebSettingsPayload()) })
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/settings", nil))
-	var payload map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
-		t.Fatal(err)
+	get := func(disableAuth bool) map[string]any {
+		r := gin.New()
+		r.GET("/settings", func(c *gin.Context) { c.JSON(200, settingsPayloadFor(c, disableAuth)) })
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/settings", nil))
+		var payload map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		return payload
 	}
+	// With auth on, an anonymous visitor must not learn the wrapper address.
+	if got := get(false)["appleWrapperUrl"]; got != "" {
+		t.Fatalf("anonymous appleWrapperUrl = %v, want empty", got)
+	}
+	payload := get(true)
 	if payload["appleWrapperUrl"] != "http://127.0.0.1:12340" || payload["appleAudioQuality"] != "aac" {
 		t.Fatalf("settings payload = %v", payload)
 	}

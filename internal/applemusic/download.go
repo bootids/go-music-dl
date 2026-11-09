@@ -17,7 +17,8 @@ import (
 )
 
 // cdnIdleTimeout cancels the media download when a read makes no progress.
-const cdnIdleTimeout = 30 * time.Second
+// A variable so tests can shorten it.
+var cdnIdleTimeout = 30 * time.Second
 
 // DownloadOptions configures Download.
 type DownloadOptions struct {
@@ -151,7 +152,14 @@ func downloadMedia(ctx context.Context, hc *http.Client, media *MediaPlaylist, o
 
 	ir := newIdleReader(resp.Body, cdnIdleTimeout, cancel)
 	defer ir.stop()
-	if err := DecryptStream(ctx, ir, out, media.Segments, keys); err != nil {
+	// Key fetches block the reader; they have their own wrapper timeout and
+	// must not count as a stalled CDN download.
+	pausedKeys := func(ctx context.Context, uri string) (SampleDecrypter, error) {
+		ir.stop()
+		defer ir.timer.Reset(ir.d)
+		return keys(ctx, uri)
+	}
+	if err := DecryptStream(ctx, ir, out, media.Segments, pausedKeys); err != nil {
 		if ir.timedOut() {
 			return fmt.Errorf("apple music: media download stalled for %s: %w", cdnIdleTimeout, err)
 		}

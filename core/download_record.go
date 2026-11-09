@@ -276,6 +276,11 @@ func IsSongStillDownloaded(song *model.Song, index DownloadDedupIndex, outDir st
 		return true
 	}
 	exists, known := inspectDownloadFile(outDir, relPath)
+	if exists && song.Source == "apple" && AppleWrapperConfigured() &&
+		isApplePreviewFile(song, filepath.Join(DownloadDirOrDefault(outDir), filepath.FromSlash(cleanDownloadRelPath(relPath)))) {
+		// 配置 wrapper 之前保存的 30 秒试听，允许用整曲覆盖。
+		return false
+	}
 	if !known || exists {
 		return true
 	}

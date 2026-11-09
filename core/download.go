@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -30,10 +31,16 @@ func DownloadSongData(song *model.Song, withCover bool, withLyrics bool) (*Downl
 }
 
 func DownloadSongDataWithTemplate(song *model.Song, withCover bool, withLyrics bool, filenameTemplate string) (*DownloadedSong, error) {
-	return downloadSongDataWithTemplate(song, withCover, withLyrics, withLyrics, filenameTemplate)
+	return downloadSongDataWithTemplate(context.Background(), song, withCover, withLyrics, withLyrics, filenameTemplate)
 }
 
-func downloadSongDataWithTemplate(song *model.Song, withCover, fetchLyrics, embedLyrics bool, filenameTemplate string) (*DownloadedSong, error) {
+// DownloadSongDataWithTemplateContext 与 DownloadSongDataWithTemplate 相同，
+// ctx 取消时中止 Apple Music 整曲下载（其他来源暂不响应 ctx）。
+func DownloadSongDataWithTemplateContext(ctx context.Context, song *model.Song, withCover bool, withLyrics bool, filenameTemplate string) (*DownloadedSong, error) {
+	return downloadSongDataWithTemplate(ctx, song, withCover, withLyrics, withLyrics, filenameTemplate)
+}
+
+func downloadSongDataWithTemplate(ctx context.Context, song *model.Song, withCover, fetchLyrics, embedLyrics bool, filenameTemplate string) (*DownloadedSong, error) {
 	if song == nil {
 		return nil, errors.New("song is nil")
 	}
@@ -52,7 +59,7 @@ func downloadSongDataWithTemplate(song *model.Song, withCover, fetchLyrics, embe
 		normalized.Artist = "Unknown"
 	}
 
-	audioData, contentType, err := fetchSongAudio(&normalized)
+	audioData, contentType, err := fetchSongAudio(ctx, &normalized)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +136,7 @@ func SaveSongToFileWithoutLyricsSidecar(song *model.Song, outDir string, withCov
 
 func saveSongToFileWithTemplate(song *model.Song, outDir string, withCover bool, withLyrics bool, filenameTemplate string, exportLyrics bool) (*DownloadedSong, error) {
 	result, err := downloadSongDataWithTemplate(
+		context.Background(),
 		song,
 		withCover,
 		withLyrics || exportLyrics,
@@ -329,9 +337,9 @@ func fetchMiguAudio(info *migu.DownloadInfo) ([]byte, error) {
 	return migu.DecryptAudio(fileData, info.FileKey)
 }
 
-func fetchSongAudio(song *model.Song) ([]byte, string, error) {
+func fetchSongAudio(ctx context.Context, song *model.Song) ([]byte, string, error) {
 	if song.Source == "apple" && AppleWrapperConfigured() {
-		data, err := FetchFullAppleAudio(song)
+		data, err := FetchFullAppleAudioContext(ctx, song)
 		if err != nil {
 			return nil, "", err
 		}

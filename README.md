@@ -175,13 +175,13 @@ docker compose -f docker-compose.yml -f docker-compose.apple.yml up -d
 
 `docker-compose.apple.yml` 是可选的覆盖文件：它会额外启动 `wrapper` 容器，并给 `music-dl` 设置 `MUSIC_DL_APPLE_WRAPPER_URL=http://wrapper:12340`。默认的 `docker-compose.yml` 不受影响。GHCR 镜像拉取失败时，可以把文件里的 `image:` 换成 `build: https://github.com/WorldObservationLog/wrapper.git#lite` 本地构建。
 
-**首次登录与两步验证**：第一次启动时 wrapper 会用 `.env` 里的账号登录。账号开启了两步验证时，请在 10 分钟内把收到的验证码写进数据目录：
+**首次登录与两步验证**：第一次启动时 wrapper 会用 `.env` 里的账号登录。账号开启了两步验证时，请在 10 分钟内把收到的验证码写进 wrapper 的数据目录。该目录由 wrapper 容器设为 root 所有，Linux 下普通用户需要 `sudo`：
 
 ```bash
-echo 123456 > ./data/wrapper/2fa.txt
+echo 123456 | sudo tee ./wrapper-data/2fa.txt
 ```
 
-登录成功后令牌保存在 `./data/wrapper`，之后重启无需再次登录，`.env` 里的账号密码可以清空。可用 `docker compose logs -f wrapper` 查看登录进度。
+登录成功后令牌保存在 `./wrapper-data`（不要放进 `./data`，music-dl 启动时会改写 `./data` 的属主），之后重启无需再次登录，`.env` 里的账号密码可以清空。可用 `docker compose logs -f wrapper` 查看登录进度。
 
 **不用 Docker 时**：自行运行 wrapper-lite（或 `wrapper-lite-qemu`），然后在 Web“设置 → 平台 Cookie → Apple Music 完整下载（wrapper-lite）”里填写 wrapper 地址（如 `http://127.0.0.1:12340`），或设置环境变量 `MUSIC_DL_APPLE_WRAPPER_URL`。环境变量优先于设置页；TUI 只能通过环境变量或已保存的设置启用。
 
@@ -508,7 +508,7 @@ Web 右上角“设置”里可添加平台 Cookie。网易云音乐、QQ 音乐
 Web 首页歌单入口旁提供“歌单分类”和“我的歌单”。歌单分类可直接浏览支持平台的官方分类，其中汽水音乐提供发现页的 13 个推荐分类（每个分类会聚合多轮随机推荐并去重）；我的歌单需要先配置对应平台 Cookie，Spotify 则配置 OAuth Token，目前支持网易云音乐、QQ 音乐、酷狗音乐、汽水音乐和 Spotify。
 
 **Q: Apple Music 仍然只下载到 30 秒，或提示 wrapper 未登录（`apple wrapper is not logged in`）？**
-先确认设置页或 `MUSIC_DL_APPLE_WRAPPER_URL` 填了 wrapper 地址。wrapper 的 `/status` 返回空的 regions 表示还没登录成功：查看 wrapper 日志，必要时删掉 `./data/wrapper` 后重新登录，并按提示写入 `2fa.txt`。
+先确认设置页或 `MUSIC_DL_APPLE_WRAPPER_URL` 填了 wrapper 地址。wrapper 的 `/status` 返回空的 regions 表示还没登录成功：查看 wrapper 日志，必要时删掉 `./wrapper-data`（root 所有，需 `sudo rm -rf ./wrapper-data`）后重新登录，并按提示写入 `2fa.txt`。
 
 **Q: Apple Music 下载报 `apple wrapper /m3u8` 或 `/key` 错误？**
 最常见的原因是地区不匹配：歌曲必须在 wrapper 登录账号所在地区的曲库里。搜索或解析用的地区和账号地区不同、或歌曲在该地区下架时，wrapper 会直接返回错误，本程序原样显示。

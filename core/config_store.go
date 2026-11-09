@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -451,9 +450,8 @@ func normalizeShortcutKey(key string) string {
 
 func validateWebSettings(settings WebSettings) error {
 	if settings.AppleWrapperURL != "" {
-		u, err := url.Parse(settings.AppleWrapperURL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("%w: Apple wrapper 地址需为 http(s)://host:port", ErrInvalidWebSettings)
+		if err := ValidateAppleWrapperURL(settings.AppleWrapperURL); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidWebSettings, err)
 		}
 	}
 

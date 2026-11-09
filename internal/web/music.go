@@ -1286,7 +1286,8 @@ func RegisterMusicRoutes(api, configAPI *gin.RouterGroup) {
 		}
 
 		if source == "apple" && !streamPlayback && core.AppleWrapperConfigured() {
-			result, err := core.DownloadSongDataWithTemplate(tempSong, false, false, settings.DownloadFilenameTemplate)
+			// 浏览器中止下载时随请求一起取消，不再继续拉取和解密整曲。
+			result, err := core.DownloadSongDataWithTemplateContext(c.Request.Context(), tempSong, false, false, settings.DownloadFilenameTemplate)
 			if err != nil {
 				c.String(502, "Apple full download error: "+err.Error())
 				return
@@ -1296,8 +1297,9 @@ func RegisterMusicRoutes(api, configAPI *gin.RouterGroup) {
 					c.Header("X-MusicDL-Warning", err.Error())
 				}
 			}
+			// 不支持 Range：每次请求都要完整下载并解密，分段续传只会成倍重复下载。
 			setDownloadHeader(c, result.Filename)
-			http.ServeContent(c.Writer, c.Request, result.Filename, time.Now(), bytes.NewReader(result.Data))
+			c.Data(200, result.ContentType, result.Data)
 			return
 		}
 

@@ -132,17 +132,51 @@ func publicWebSettingsPayload() webSettingsPayload {
 	}
 }
 
+// settingsPayloadFor 返回 GET /settings 的内容。未登录的访客拿不到 wrapper 地址：
+// wrapper-lite 没有鉴权，地址本身就等于账号的取密钥能力。
+func settingsPayloadFor(c *gin.Context, disableAuth bool) webSettingsPayload {
+	payload := publicWebSettingsPayload()
+	if !disableAuth && !requestAuthenticated(c) {
+		payload.AppleWrapperURL = ""
+	}
+	return payload
+}
+
+func requestAuthenticated(c *gin.Context) bool {
+	settings, err := core.GetWebAuthSettings()
+	if err != nil || !authConfigured(settings) {
+		return false
+	}
+	value, err := c.Cookie(authCookieName)
+	return err == nil && validateSessionValue(settings, value, time.Now())
+}
+
 // appleWrapperStatusHandler 检测 wrapper-lite 是否可达并已登录，同时报告 ffmpeg 是否可用。
+// 带 url 参数时检测该地址（设置页里尚未保存的输入）；环境变量指定地址时忽略它。
 func appleWrapperStatusHandler(c *gin.Context) {
 	_, ffmpegErr := core.ResolveFFmpegPath()
 	ffmpegOK := ffmpegErr == nil
-	if !core.AppleWrapperConfigured() {
-		c.JSON(http.StatusOK, gin.H{"ok": false, "configured": false, "error": "未配置", "ffmpeg": ffmpegOK})
+	baseURL := core.AppleWrapperURL()
+	if typed, ok := c.GetQuery("url"); ok && !core.AppleWrapperEnvOverride() {
+		baseURL = strings.TrimSpace(typed)
+		if baseURL != "" {
+			if err := core.ValidateAppleWrapperURL(baseURL); err != nil {
+				c.JSON(http.StatusOK, gin.H{"ok": false, "configured": false, "error": err.Error(), "ffmpeg": ffmpegOK})
+				return
+			}
+		}
+	}
+	if baseURL == "" {
+		msg := "未配置"
+		if err := core.AppleWrapperEnvError(); err != nil {
+			msg = err.Error()
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": false, "configured": false, "error": msg, "ffmpeg": ffmpegOK})
 		return
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
-	regions, err := core.NewAppleWrapperClient().Status(ctx)
+	regions, err := core.NewAppleWrapperClientFor(baseURL).Status(ctx)
 	payload := gin.H{"ok": err == nil, "configured": true, "regions": regions, "ffmpeg": ffmpegOK}
 	if err != nil {
 		payload["error"] = err.Error()
@@ -657,7 +691,7 @@ func StartWithOptions(port string, opts StartOptions) {
 	})
 
 	api.GET("/settings", func(c *gin.Context) {
-		c.JSON(200, publicWebSettingsPayload())
+		c.JSON(200, settingsPayloadFor(c, opts.DisableAuth))
 	})
 	configAPI.POST("/settings", func(c *gin.Context) {
 		var req core.WebSettings

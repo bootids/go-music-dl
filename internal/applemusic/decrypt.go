@@ -37,7 +37,7 @@ func DecryptStream(ctx context.Context, in io.Reader, out io.Writer, segs []Segm
 	if err != nil {
 		return err
 	}
-	tracks, err := prepareInit(init)
+	tracks, ini, err := prepareInit(init)
 	if err != nil {
 		return err
 	}
@@ -64,12 +64,15 @@ func DecryptStream(ctx context.Context, in io.Reader, out io.Writer, segs []Segm
 			}
 			pos = next
 			if frag == nil {
+				if i < len(segs) {
+					return fmt.Errorf("%w: stream ended after %d of %d segments", ErrSegmentMismatch, i, len(segs))
+				}
 				return nil
 			}
 			if i >= len(segs) {
 				return fmt.Errorf("%w: fragment %d but only %d segments", ErrSegmentMismatch, i, len(segs))
 			}
-			uri := segs[i].KeyURI
+			uri := fragmentKeyURI(segs, i, ini, frag)
 			dec, ok := cache[uri]
 			if !ok {
 				if dec, err = keys(gctx, uri); err != nil {
@@ -167,11 +170,18 @@ func readInit(r io.Reader) (*mp4.InitSegment, uint64, error) {
 	return init, pos, nil
 }
 
+// initInfo records what prepareInit dropped from the original init.
+type initInfo struct {
+	dualEntry   bool   // stsd had two entries (prefetch key, song key)
+	defaultDesc uint32 // trex default_sample_description_index before normalizing
+}
+
 // prepareInit keeps one sample entry, converts the init to clear and returns
 // the per-track decryption info.
-func prepareInit(init *mp4.InitSegment) (map[uint32]mp4.DecryptTrackInfo, error) {
+func prepareInit(init *mp4.InitSegment) (map[uint32]mp4.DecryptTrackInfo, initInfo, error) {
+	var ini initInfo
 	if len(init.Moov.Traks) != 1 {
-		return nil, fmt.Errorf("expected 1 track, got %d", len(init.Moov.Traks))
+		return nil, ini, fmt.Errorf("expected 1 track, got %d", len(init.Moov.Traks))
 	}
 	stbl := init.Moov.Trak.Mdia.Minf.Stbl
 	stsd := stbl.Stsd
@@ -179,17 +189,28 @@ func prepareInit(init *mp4.InitSegment) (map[uint32]mp4.DecryptTrackInfo, error)
 	case 1:
 	case 2:
 		if stsd.Children[0].Type() != stsd.Children[1].Type() {
-			return nil, fmt.Errorf("stsd entries differ: %s, %s", stsd.Children[0].Type(), stsd.Children[1].Type())
+			return nil, ini, fmt.Errorf("stsd entries differ: %s, %s", stsd.Children[0].Type(), stsd.Children[1].Type())
 		}
 		stsd.Children = stsd.Children[:1]
 		stsd.SampleCount = 1
+		ini.dualEntry = true
 	default:
-		return nil, fmt.Errorf("expected 1 or 2 stsd entries, got %d", len(stsd.Children))
+		return nil, ini, fmt.Errorf("expected 1 or 2 stsd entries, got %d", len(stsd.Children))
+	}
+	// Only entry 1 remains, so every sample must point at it.
+	ini.defaultDesc = 1
+	if mvex := init.Moov.Mvex; mvex != nil {
+		for i, trex := range mvex.Trexs {
+			if i == 0 {
+				ini.defaultDesc = trex.DefaultSampleDescriptionIndex
+			}
+			trex.DefaultSampleDescriptionIndex = 1
+		}
 	}
 
 	di, err := mp4.DecryptInit(init)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt init: %w", err)
+		return nil, ini, fmt.Errorf("decrypt init: %w", err)
 	}
 	tracks := make(map[uint32]mp4.DecryptTrackInfo, len(di.TrackInfos))
 	for _, ti := range di.TrackInfos {
@@ -214,7 +235,36 @@ func prepareInit(init *mp4.InitSegment) (map[uint32]mp4.DecryptTrackInfo, error)
 		}
 		st.Children = kept
 	}
-	return tracks, nil
+	return tracks, ini, nil
+}
+
+// fragmentKeyURI returns the key URI for fragment i. With Apple's two-entry
+// stsd the fragment's sample description index names the key that encrypted
+// it: entry 1 is the prefetch key and entry 2 the song key. Otherwise, or for
+// any other index, the playlist position decides.
+func fragmentKeyURI(segs []Segment, i int, ini initInfo, frag *mp4.Fragment) string {
+	uri := segs[i].KeyURI
+	if !ini.dualEntry || frag.Moof == nil || frag.Moof.Traf == nil || frag.Moof.Traf.Tfhd == nil {
+		return uri
+	}
+	desc := ini.defaultDesc
+	if tfhd := frag.Moof.Traf.Tfhd; tfhd.HasSampleDescriptionIndex() {
+		desc = tfhd.SampleDescriptionIndex
+	}
+	switch desc {
+	case 1:
+		return PrefetchKeyURI
+	case 2:
+		if uri != "" && uri != PrefetchKeyURI {
+			return uri
+		}
+		for _, s := range segs {
+			if s.KeyURI != "" && s.KeyURI != PrefetchKeyURI {
+				return s.KeyURI
+			}
+		}
+	}
+	return uri
 }
 
 func isSampleEncryptionGroup(t string) bool { return t == "seig" || t == "seam" }
@@ -320,6 +370,10 @@ func decryptFragment(frag *mp4.Fragment, tracks map[uint32]mp4.DecryptTrackInfo,
 	_, psshBytes := moof.RemovePsshs()
 	removed += psshBytes
 	for _, traf := range moof.Trafs {
+		// prepareInit kept only stsd entry 1.
+		if traf.Tfhd.HasSampleDescriptionIndex() {
+			traf.Tfhd.SampleDescriptionIndex = 1
+		}
 		for _, trun := range traf.Truns {
 			trun.DataOffset -= int32(removed)
 		}

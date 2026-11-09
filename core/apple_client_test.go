@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -71,6 +72,16 @@ func TestAppleWrapperSettings(t *testing.T) {
 		t.Fatal("env override not reported")
 	}
 
+	// A malformed env value is ignored, like an invalid value in the settings UI.
+	t.Setenv(AppleWrapperEnvURL, "127.0.0.1:12340")
+	if AppleWrapperEnvOverride() || AppleWrapperEnvError() == nil {
+		t.Fatalf("malformed env: override=%v err=%v", AppleWrapperEnvOverride(), AppleWrapperEnvError())
+	}
+	if got := AppleWrapperURL(); got != "http://127.0.0.1:12340" {
+		t.Fatalf("malformed env URL = %q, want saved setting", got)
+	}
+	t.Setenv(AppleWrapperEnvURL, " http://wrapper:12340/ ")
+
 	if err := SaveWebSettings(WebSettings{AppleAudioQuality: "flac"}); err != nil {
 		t.Fatalf("SaveWebSettings: %v", err)
 	}
@@ -90,7 +101,7 @@ func TestAppleFetchSongAudioUsesWrapper(t *testing.T) {
 		return &applemusic.Result{Data: []byte("fmp4"), Codec: "alac"}, nil
 	})
 
-	data, mime, err := fetchSongAudio(&model.Song{Source: "apple", ID: "123"})
+	data, mime, err := fetchSongAudio(context.Background(), &model.Song{Source: "apple", ID: "123"})
 	if err != nil {
 		t.Fatalf("fetchSongAudio: %v", err)
 	}
@@ -110,7 +121,7 @@ func TestAppleFetchSongAudioNoPreviewFallback(t *testing.T) {
 		return nil, applemusic.ErrNoKeyTemplate
 	})
 
-	data, _, err := fetchSongAudio(&model.Song{Source: "apple", ID: "123"})
+	data, _, err := fetchSongAudio(context.Background(), &model.Song{Source: "apple", ID: "123"})
 	if !errors.Is(err, applemusic.ErrNoKeyTemplate) || data != nil {
 		t.Fatalf("got data=%q err=%v, want ErrNoKeyTemplate and no data", data, err)
 	}
@@ -179,6 +190,21 @@ func TestAppleLyricsFromWrapper(t *testing.T) {
 	}
 }
 
+func TestAppleLyricsEmptyWrapperFallsBackToCookie(t *testing.T) {
+	setupAppleConfigForTest(t)
+	fake := applemusictest.New(t)
+	fake.Lyrics["123"] = ""
+	t.Setenv(AppleWrapperEnvURL, fake.URL)
+	orig := appleCookieLyrics
+	appleCookieLyrics = func(string, *model.Song) (string, error) { return "[00:01.00]cookie\n", nil }
+	t.Cleanup(func() { appleCookieLyrics = orig })
+
+	lrc, err := GetLyricFunc("apple")(&model.Song{Source: "apple", ID: "123"})
+	if err != nil || lrc != "[00:01.00]cookie\n" {
+		t.Fatalf("lrc = %q, err = %v, want cookie lyrics", lrc, err)
+	}
+}
+
 // buildClearFragmentedMP4 builds a small unencrypted AAC fMP4 (init plus two fragments).
 func buildClearFragmentedMP4(t *testing.T) []byte {
 	t.Helper()
@@ -213,4 +239,39 @@ func buildClearFragmentedMP4(t *testing.T) []byte {
 		}
 	}
 	return buf.Bytes()
+}
+
+func writeMP4WithDuration(t *testing.T, path string, seconds uint64) {
+	t.Helper()
+	init := mp4.CreateEmptyInit()
+	init.AddEmptyTrack(44100, "audio", "und")
+	init.Moov.Mvhd.Duration = seconds * uint64(init.Moov.Mvhd.Timescale)
+	var buf bytes.Buffer
+	if err := init.Encode(&buf); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAppleDedupReplacesPreview(t *testing.T) {
+	setupAppleConfigForTest(t)
+	dir := t.TempDir()
+	writeMP4WithDuration(t, filepath.Join(dir, "preview.m4a"), 30)
+	writeMP4WithDuration(t, filepath.Join(dir, "full.m4a"), 200)
+	song := &model.Song{Source: "apple", ID: "123", Name: "N", Artist: "A", Duration: 200}
+
+	index := DownloadDedupIndex{SongKey(song): "preview.m4a"}
+	if !IsSongStillDownloaded(song, index, dir) {
+		t.Fatal("preview not skipped without wrapper")
+	}
+	t.Setenv(AppleWrapperEnvURL, "http://127.0.0.1:1")
+	if IsSongStillDownloaded(song, index, dir) {
+		t.Fatal("preview skipped with wrapper configured")
+	}
+	index = DownloadDedupIndex{SongKey(song): "full.m4a"}
+	if !IsSongStillDownloaded(song, index, dir) {
+		t.Fatal("full track not skipped")
+	}
 }

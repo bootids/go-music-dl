@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Eyevinn/mp4ff/mp4"
 	"github.com/guohuiyuan/go-music-dl/internal/applemusic"
 	"github.com/guohuiyuan/music-lib/apple"
 	"github.com/guohuiyuan/music-lib/model"
@@ -24,20 +27,64 @@ const (
 	appleALACMaxRate   = 192000
 )
 
-// appleDownload 是包级变量，测试里可以替换掉。
-var appleDownload = applemusic.Download
+// appleDownload 和 appleCookieLyrics 是包级变量，测试里可以替换掉。
+var (
+	appleDownload     = applemusic.Download
+	appleCookieLyrics = func(cookie string, song *model.Song) (string, error) {
+		return apple.New(cookie).GetLyrics(song)
+	}
+)
+
+// ValidateAppleWrapperURL 检查 wrapper 地址是否为 http(s)://host[:port]。
+func ValidateAppleWrapperURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return errors.New("Apple wrapper 地址需为 http(s)://host:port")
+	}
+	return nil
+}
+
+func normalizeAppleWrapperURL(raw string) string {
+	return strings.TrimSuffix(strings.TrimSpace(raw), "/")
+}
+
+var warnAppleWrapperEnvOnce sync.Once
+
+// appleWrapperEnvURL 返回环境变量里的 wrapper 地址；格式不合法时返回错误。
+func appleWrapperEnvURL() (string, error) {
+	v := normalizeAppleWrapperURL(os.Getenv(AppleWrapperEnvURL))
+	if v == "" {
+		return "", nil
+	}
+	if err := ValidateAppleWrapperURL(v); err != nil {
+		return "", fmt.Errorf("环境变量 %s 无效（%q）：%w", AppleWrapperEnvURL, v, err)
+	}
+	return v, nil
+}
+
+// AppleWrapperEnvError 返回环境变量 wrapper 地址的格式错误；未设置或合法时为 nil。
+func AppleWrapperEnvError() error {
+	_, err := appleWrapperEnvURL()
+	return err
+}
 
 // AppleWrapperURL 返回当前生效的 wrapper 地址：环境变量优先，其次是界面设置。
+// 环境变量格式不合法时忽略它（打印一次警告），与界面设置的校验一致。
 func AppleWrapperURL() string {
-	if v := strings.TrimSuffix(strings.TrimSpace(os.Getenv(AppleWrapperEnvURL)), "/"); v != "" {
+	v, err := appleWrapperEnvURL()
+	if err != nil {
+		warnAppleWrapperEnvOnce.Do(func() { fmt.Fprintln(os.Stderr, "Warning:", err) })
+	}
+	if v != "" {
 		return v
 	}
 	return GetWebSettings().AppleWrapperURL
 }
 
-// AppleWrapperEnvOverride 表示 wrapper 地址是否由环境变量指定。
+// AppleWrapperEnvOverride 表示 wrapper 地址是否由（合法的）环境变量指定。
 func AppleWrapperEnvOverride() bool {
-	return strings.TrimSpace(os.Getenv(AppleWrapperEnvURL)) != ""
+	v, _ := appleWrapperEnvURL()
+	return v != ""
 }
 
 // AppleWrapperConfigured 表示是否启用了 Apple Music 整曲下载。
@@ -55,13 +102,23 @@ func AppleAudioQuality() applemusic.Quality {
 
 // NewAppleWrapperClient 按当前生效的地址构造 wrapper 客户端。
 func NewAppleWrapperClient() *applemusic.Client {
-	return applemusic.NewClient(AppleWrapperURL(), &http.Client{Timeout: 60 * time.Second, Transport: http.DefaultTransport})
+	return NewAppleWrapperClientFor(AppleWrapperURL())
+}
+
+// NewAppleWrapperClientFor 按给定地址构造 wrapper 客户端（设置页检测未保存的地址时用）。
+func NewAppleWrapperClientFor(baseURL string) *applemusic.Client {
+	return applemusic.NewClient(normalizeAppleWrapperURL(baseURL), &http.Client{Timeout: 60 * time.Second, Transport: http.DefaultTransport})
 }
 
 // FetchFullAppleAudio 通过 wrapper 下载并解密整曲，返回 MP4 字节。
 // ffmpeg 不可用时返回未重封装的分片 MP4。
 func FetchFullAppleAudio(song *model.Song) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	return FetchFullAppleAudioContext(context.Background(), song)
+}
+
+// FetchFullAppleAudioContext 同 FetchFullAppleAudio，ctx 取消（如浏览器中止下载）时停止下载。
+func FetchFullAppleAudioContext(ctx context.Context, song *model.Song) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
 
 	res, err := appleDownload(ctx, applemusic.DownloadOptions{
@@ -109,7 +166,7 @@ func remuxAppleMP4(data []byte) ([]byte, error) {
 	return os.ReadFile(outPath)
 }
 
-// appleLyricFunc 优先从 wrapper 取 TTML 歌词，失败或未配置时回退到 music-lib，
+// appleLyricFunc 优先从 wrapper 取 TTML 歌词，失败、为空或未配置时回退到 music-lib，
 // 两种来源都转成 LRC；转换失败时原样返回。
 func appleLyricFunc(cookie string) func(*model.Song) (string, error) {
 	return func(song *model.Song) (string, error) {
@@ -119,8 +176,8 @@ func appleLyricFunc(cookie string) func(*model.Song) (string, error) {
 			text, err = NewAppleWrapperClient().Lyrics(ctx, song.ID)
 			cancel()
 		}
-		if err != nil {
-			text, err = apple.New(cookie).GetLyrics(song)
+		if err != nil || strings.TrimSpace(text) == "" {
+			text, err = appleCookieLyrics(cookie, song)
 			if err != nil {
 				return "", err
 			}
@@ -130,6 +187,28 @@ func appleLyricFunc(cookie string) func(*model.Song) (string, error) {
 		}
 		return text, nil
 	}
+}
+
+// applePreviewMaxSeconds 是判定为 Apple Music 试听文件的最长时长。
+const applePreviewMaxSeconds = 35
+
+// isApplePreviewFile 判断已下载的文件是否是 30 秒试听（而歌曲本身更长）。
+// 读不出 MP4 时长时按“不是试听”处理。
+func isApplePreviewFile(song *model.Song, path string) bool {
+	if song.Duration > 0 && song.Duration <= applePreviewMaxSeconds+5 {
+		return false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	file, err := mp4.DecodeFile(f, mp4.WithDecodeMode(mp4.DecModeLazyMdat))
+	if err != nil || file.Moov == nil || file.Moov.Mvhd == nil || file.Moov.Mvhd.Timescale == 0 {
+		return false
+	}
+	seconds := float64(file.Moov.Mvhd.Duration) / float64(file.Moov.Mvhd.Timescale)
+	return seconds > 0 && seconds <= applePreviewMaxSeconds
 }
 
 func isDigits(s string) bool {

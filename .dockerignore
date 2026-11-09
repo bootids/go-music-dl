@@ -18,6 +18,7 @@ tmp-music-dl*
 # Downloads
 downloads/
 data/
+wrapper-data/
 desktop/
 desktop_app/ffmpeg/
 screenshots/

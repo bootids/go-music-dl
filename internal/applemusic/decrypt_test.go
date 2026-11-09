@@ -44,12 +44,23 @@ type fixture struct {
 // (mp4ff EncryptFragment, no senc), fragment 2 uses skd://b with subsamples
 // and a senc box. skip != 0 sets a 1:skip pattern in tenc.
 func buildFixture(t testing.TB, skip byte) *fixture {
+	return buildFixtureOpts(t, skip, false)
+}
+
+// buildFixtureOpts with dual set mimics Apple's two-entry stsd: key a is the
+// prefetch key, the init carries two identical sample entries and every tfhd
+// names its entry (1 for fragments 0-1, 2 for fragment 2).
+func buildFixtureOpts(t testing.TB, skip byte, dual bool) *fixture {
 	t.Helper()
 	rng := rand.New(rand.NewSource(1))
+	keyA := "skd://a"
+	if dual {
+		keyA = PrefetchKeyURI
+	}
 	fx := &fixture{
-		keys: map[string][]byte{"skd://a": randBytes(rng, 16), "skd://b": randBytes(rng, 16)},
+		keys: map[string][]byte{keyA: randBytes(rng, 16), "skd://b": randBytes(rng, 16)},
 		iv:   randBytes(rng, 16),
-		segs: []Segment{{KeyURI: "skd://a"}, {KeyURI: "skd://a"}, {KeyURI: "skd://b"}},
+		segs: []Segment{{KeyURI: keyA}, {KeyURI: keyA}, {KeyURI: "skd://b"}},
 	}
 	kid, _ := mp4.NewUUIDFromString("00112233-4455-6677-8899-aabbccddeeff")
 
@@ -59,7 +70,7 @@ func buildFixture(t testing.TB, skip byte) *fixture {
 		t.Fatal(err)
 	}
 	trackID := trak.Tkhd.TrackID
-	ipd, err := mp4.InitProtect(init, fx.keys["skd://a"], fx.iv, "cbcs", kid, nil)
+	ipd, err := mp4.InitProtect(init, fx.keys[keyA], fx.iv, "cbcs", kid, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +81,18 @@ func buildFixture(t testing.TB, skip byte) *fixture {
 	var buf bytes.Buffer
 	if err := init.Encode(&buf); err != nil {
 		t.Fatal(err)
+	}
+	if dual {
+		dup, err := mp4.DecodeFile(bytes.NewReader(buf.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stsd := init.Moov.Trak.Mdia.Minf.Stbl.Stsd
+		stsd.AddChild(dup.Init.Moov.Trak.Mdia.Minf.Stbl.Stsd.Children[0])
+		buf.Reset()
+		if err := init.Encode(&buf); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	var decodeTime uint64
@@ -91,6 +114,14 @@ func buildFixture(t testing.TB, skip byte) *fixture {
 			decodeTime += 1024
 		}
 		fx.plain = append(fx.plain, plains)
+		if dual {
+			tfhd := frag.Moof.Traf.Tfhd
+			tfhd.Flags |= mp4.TfhdSampleDescriptionIndexPresentFlag
+			tfhd.SampleDescriptionIndex = 1
+			if f == 2 {
+				tfhd.SampleDescriptionIndex = 2
+			}
+		}
 
 		key := fx.keys[fx.segs[f].KeyURI]
 		if f < 2 {
@@ -260,6 +291,64 @@ func TestDecryptStreamSegmentMismatch(t *testing.T) {
 	err := DecryptStream(context.Background(), bytes.NewReader(fx.file), &bytes.Buffer{}, fx.segs[:2], ks.source)
 	if !errors.Is(err, ErrSegmentMismatch) {
 		t.Fatalf("got %v, want ErrSegmentMismatch", err)
+	}
+}
+
+func TestDecryptStreamTruncated(t *testing.T) {
+	fx := buildFixture(t, 0)
+	ks := &countingKeys{calls: map[string]int{}, fx: fx}
+	segs := append(append([]Segment(nil), fx.segs...), Segment{KeyURI: "skd://b"})
+	err := DecryptStream(context.Background(), bytes.NewReader(fx.file), &bytes.Buffer{}, segs, ks.source)
+	if !errors.Is(err, ErrSegmentMismatch) {
+		t.Fatalf("got %v, want ErrSegmentMismatch", err)
+	}
+}
+
+// The playlist lists only the song key (the prefetch key was dropped or left
+// implicit); the tfhd sample description index must still pick the prefetch
+// key for entry 1, and the output must only reference the one kept entry.
+func TestDecryptStreamDualEntryKeysByDescIndex(t *testing.T) {
+	fx := buildFixtureOpts(t, 0, true)
+	ks := &countingKeys{calls: map[string]int{}, fx: fx}
+	segs := []Segment{{KeyURI: "skd://b"}, {KeyURI: "skd://b"}, {KeyURI: "skd://b"}}
+	var out bytes.Buffer
+	if err := DecryptStream(context.Background(), bytes.NewReader(fx.file), &out, segs, ks.source); err != nil {
+		t.Fatal(err)
+	}
+	if ks.calls[PrefetchKeyURI] != 1 || ks.calls["skd://b"] != 1 {
+		t.Fatalf("key source calls = %v", ks.calls)
+	}
+	f, err := mp4.DecodeFile(bytes.NewReader(out.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(f.Init.Moov.Trak.Mdia.Minf.Stbl.Stsd.Children); n != 1 {
+		t.Fatalf("stsd has %d entries, want 1", n)
+	}
+	trex := f.Init.Moov.Mvex.Trex
+	if trex.DefaultSampleDescriptionIndex != 1 {
+		t.Fatalf("trex default index = %d, want 1", trex.DefaultSampleDescriptionIndex)
+	}
+	var i int
+	for _, seg := range f.Segments {
+		for _, frag := range seg.Fragments {
+			if idx := frag.Moof.Traf.Tfhd.SampleDescriptionIndex; idx != 1 {
+				t.Errorf("fragment %d tfhd index = %d, want 1", i, idx)
+			}
+			samples, err := frag.GetFullSamples(trex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for j, s := range samples {
+				if !bytes.Equal(s.Data, fx.plain[i][j]) {
+					t.Errorf("fragment %d sample %d differs from plaintext", i, j)
+				}
+			}
+			i++
+		}
+	}
+	if i != len(fx.plain) {
+		t.Fatalf("got %d fragments, want %d", i, len(fx.plain))
 	}
 }
 

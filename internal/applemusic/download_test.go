@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Eyevinn/mp4ff/aac"
 	"github.com/Eyevinn/mp4ff/mp4"
@@ -142,6 +143,10 @@ type downloadEnv struct {
 	cdn     *httptest.Server
 	fx      *dlFixture
 	opts    applemusic.DownloadOptions
+	// pauseAt > 0 makes the ALAC track handler send that many bytes, then
+	// wait pause before sending the rest.
+	pauseAt int64
+	pause   time.Duration
 }
 
 // newDownloadEnv serves a 3-fragment encrypted track: fragments 0-1 use the
@@ -179,6 +184,7 @@ alac/media.m3u8
 #EXT-X-STREAM-INF:BANDWIDTH=7000000,CODECS="alac",AUDIO="audio-alac-stereo-192000-24"
 hires/media.m3u8
 `
+	env := &downloadEnv{fx: fx}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/master.m3u8", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, master) })
 	mux.HandleFunc("/alac/media.m3u8", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, media.String()) })
@@ -186,6 +192,13 @@ hires/media.m3u8
 	mux.HandleFunc("/alac/track.mp4", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Range") != "" {
 			http.Error(w, "unexpected Range", http.StatusBadRequest)
+			return
+		}
+		if env.pauseAt > 0 {
+			_, _ = w.Write(fx.File[:env.pauseAt])
+			w.(http.Flusher).Flush()
+			time.Sleep(env.pause)
+			_, _ = w.Write(fx.File[env.pauseAt:])
 			return
 		}
 		_, _ = w.Write(fx.File)
@@ -199,29 +212,27 @@ hires/media.m3u8
 	wr.Keys["0|"+applemusic.PrefetchKeyURI] = keyTemplate("0", applemusic.PrefetchKeyURI, fx.KeyA)
 	wr.Keys[dlAdamID+"|"+dlSongKey] = keyTemplate(dlAdamID, dlSongKey, fx.KeyB)
 
-	return &downloadEnv{
-		wrapper: wr,
-		cdn:     cdn,
-		fx:      fx,
-		opts: applemusic.DownloadOptions{
-			Client:      applemusic.NewClient(wr.URL, nil),
-			HTTP:        cdn.Client(),
-			AdamID:      dlAdamID,
-			Quality:     applemusic.QualityALAC,
-			ALACMaxRate: 48000,
-			NewDecrypter: func(kt *applemusic.KeyTemplate) (applemusic.SampleDecrypter, error) {
-				key, err := hex.DecodeString(kt.ContentKey)
-				if err != nil {
-					return nil, err
-				}
-				block, err := aes.NewCipher(key)
-				if err != nil {
-					return nil, err
-				}
-				return cbcDec{block: block, iv: fx.IV}, nil
-			},
+	env.wrapper = wr
+	env.cdn = cdn
+	env.opts = applemusic.DownloadOptions{
+		Client:      applemusic.NewClient(wr.URL, nil),
+		HTTP:        cdn.Client(),
+		AdamID:      dlAdamID,
+		Quality:     applemusic.QualityALAC,
+		ALACMaxRate: 48000,
+		NewDecrypter: func(kt *applemusic.KeyTemplate) (applemusic.SampleDecrypter, error) {
+			key, err := hex.DecodeString(kt.ContentKey)
+			if err != nil {
+				return nil, err
+			}
+			block, err := aes.NewCipher(key)
+			if err != nil {
+				return nil, err
+			}
+			return cbcDec{block: block, iv: fx.IV}, nil
 		},
 	}
+	return env
 }
 
 func keyTemplate(adamID, uri string, key []byte) applemusic.KeyTemplate {
@@ -295,6 +306,24 @@ func TestDownload(t *testing.T) {
 	}
 	if len(calls) != 3 {
 		t.Errorf("wrapper calls = %v, want 3 (one key fetch per URI)", calls)
+	}
+}
+
+// A key fetch slower than the CDN idle timeout is not a stalled download.
+func TestDownloadSlowKeyIsNotStall(t *testing.T) {
+	env := newDownloadEnv(t)
+	applemusic.SetCDNIdleTimeout(t, 50*time.Millisecond)
+	// The rest of the file arrives while the first key fetch is running.
+	ranges := topLevelFragments(t, env.fx.File)
+	env.pauseAt = ranges[1][0] + ranges[1][1]
+	env.pause = 100 * time.Millisecond
+	newDec := env.opts.NewDecrypter
+	env.opts.NewDecrypter = func(kt *applemusic.KeyTemplate) (applemusic.SampleDecrypter, error) {
+		time.Sleep(200 * time.Millisecond)
+		return newDec(kt)
+	}
+	if _, err := applemusic.Download(context.Background(), env.opts); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -3935,7 +3935,10 @@ async function inspectSong(card, controller = null) {
           ? "tag tag-success tag-preview"
           : "tag tag-success";
         if (previewOnly) {
-          sizeTag.title = "Spotify 仅提供试听片段";
+          sizeTag.title =
+            source === "apple"
+              ? "未配置 wrapper，Apple Music 仅提供 30 秒试听"
+              : "Spotify 仅提供试听片段";
         } else {
           sizeTag.removeAttribute("title");
         }
@@ -5660,8 +5663,14 @@ async function testAppleWrapper() {
   const state = document.getElementById("setting-apple-wrapper-state");
   if (!state) return;
   state.textContent = "检测中…";
+  // 检测输入框里的地址（可能还没保存）；环境变量锁定时输入框禁用，由服务端用环境变量。
+  const input = document.getElementById("setting-apple-wrapper-url");
+  const query =
+    input && !input.disabled
+      ? `?url=${encodeURIComponent(input.value.trim())}`
+      : "";
   try {
-    const response = await fetch(`${API_ROOT}/apple/wrapper/status`, {
+    const response = await fetch(`${API_ROOT}/apple/wrapper/status${query}`, {
       headers: { "X-Requested-With": "XMLHttpRequest" },
     });
     const payload = await response.json().catch(() => ({}));
