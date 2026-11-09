@@ -67,7 +67,7 @@ func getJSON[T any](ctx context.Context, c *Client, endpoint string, q url.Value
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return zero, fmt.Errorf("apple wrapper /%s: read body: %w", endpoint, err)
+		return zero, &unreachableError{err: err, stage: "/" + endpoint + " read body"}
 	}
 
 	ok := resp.StatusCode >= 200 && resp.StatusCode < 300
@@ -100,7 +100,10 @@ func getJSON[T any](ctx context.Context, c *Client, endpoint string, q url.Value
 // unreachableError reports a transport failure without the wrapper address or
 // resolved IPs: download errors reach anonymous /download callers, and the
 // address is the account's key-fetching capability.
-type unreachableError struct{ err error }
+type unreachableError struct {
+	err   error
+	stage string // 为空表示连接失败；否则是失败的阶段，如 "/m3u8 read body"
+}
 
 func (e *unreachableError) Error() string {
 	reason := "connection failed"
@@ -110,6 +113,9 @@ func (e *unreachableError) Error() string {
 		reason = "canceled"
 	case errors.Is(e.err, context.DeadlineExceeded), errors.As(e.err, &ne) && ne.Timeout():
 		reason = "timeout"
+	}
+	if e.stage != "" {
+		return "apple wrapper " + e.stage + " failed: " + reason
 	}
 	return "apple wrapper unreachable: " + reason
 }

@@ -1222,6 +1222,10 @@ func RegisterMusicRoutes(api, configAPI *gin.RouterGroup) {
 
 		settings := core.GetWebSettings()
 		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist, Album: album, Cover: coverURL, Extra: extra}
+		// 时长用于识别配置 wrapper 前存下的 Apple 30 秒试听，缺失时按 0（未知）处理。
+		if d, err := strconv.Atoi(c.Query("duration")); err == nil && d > 0 {
+			tempSong.Duration = d
+		}
 
 		if saveLocal {
 			// 加载 SQLite 去重集合。

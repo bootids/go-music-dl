@@ -3,6 +3,7 @@ package applemusic_test
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -132,6 +133,32 @@ func TestWrapperUnreachable(t *testing.T) {
 	hostname, _, _ := strings.Cut(host, ":")
 	if strings.Contains(err.Error(), hostname) {
 		t.Fatalf("error leaks wrapper address: %v", err)
+	}
+}
+
+func TestWrapperBodyReadErrorHidesAddress(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		conn, buf, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n{\"code\":0,")
+		_ = buf.Flush()
+		_ = conn.(*net.TCPConn).SetLinger(0) // 发 RST，模拟 wrapper 中途重启
+		_ = conn.Close()
+	}))
+	defer srv.Close()
+	_, err := applemusic.NewClient(srv.URL, nil).M3U8(context.Background(), "123")
+	if err == nil {
+		t.Fatal("want body read error")
+	}
+	hostname, _, _ := strings.Cut(strings.TrimPrefix(srv.URL, "http://"), ":")
+	if strings.Contains(err.Error(), hostname) {
+		t.Fatalf("error leaks wrapper address: %v", err)
+	}
+	if !strings.Contains(err.Error(), "read body") {
+		t.Fatalf("want read body error, got %v", err)
 	}
 }
 

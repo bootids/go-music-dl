@@ -1084,6 +1084,10 @@ function buildDownloadRequestURL(
   if (options.saveLocal) {
     params.set("save_local", "1");
   }
+  const durationValue = parseInt(options.duration, 10);
+  if (durationValue > 0) {
+    params.set("duration", String(durationValue));
+  }
   if (options.stream) {
     params.set("stream", "1");
   }
@@ -1106,7 +1110,7 @@ function buildStreamURL(id, source, name, artist, album, cover, extra) {
   );
 }
 
-function buildDownloadURL(id, source, name, artist, album, cover, extra) {
+function buildDownloadURL(id, source, name, artist, album, cover, extra, duration = 0) {
   return buildDownloadRequestURL(
     id,
     source,
@@ -1118,6 +1122,7 @@ function buildDownloadURL(id, source, name, artist, album, cover, extra) {
     {
       embed: webSettings.embedDownload,
       saveLocal: true,
+      duration,
     },
   );
 }
@@ -1193,6 +1198,7 @@ function updateDownloadButton(link) {
     ds.album || "",
     ds.cover || "",
     ds.extra || "",
+    ds.duration,
   );
   link.title = "保存到本地目录";
 }
@@ -5197,7 +5203,7 @@ function createDownloadRequestID() {
 async function enqueueDownloadURLs(urls) {
   const songs = urls.map(raw => {
     const params = new URL(raw, window.location.href).searchParams;
-    return Object.fromEntries(["id", "source", "name", "artist", "album", "cover", "extra"].map(key => [key, params.get(key) || ""]).concat([["embed", params.get("embed") === "1"]]));
+    return Object.fromEntries(["id", "source", "name", "artist", "album", "cover", "extra"].map(key => [key, params.get(key) || ""]).concat([["embed", params.get("embed") === "1"], ["duration", parseInt(params.get("duration"), 10) || 0]]));
   });
   const response = await fetch(`${API_ROOT}/api/downloads/queue`, {
     method: "POST",
@@ -7553,6 +7559,7 @@ function syncPlayerTrackActions(player) {
       song.album,
       song.cover,
       serializeSongExtra(song.extra),
+      song.duration,
     );
     download.title = "下载当前歌曲";
     download.setAttribute("aria-label", "下载当前歌曲");
@@ -8581,6 +8588,7 @@ function updateCardWithSong(card, song, options = {}) {
       song.album || "",
       song.cover || "",
       card.dataset.extra || "",
+      song.duration,
     );
     dl.id = `dl-${song.id}`;
     dl.title = "保存到本地目录";
@@ -9135,6 +9143,7 @@ function getSelectedSongs() {
           song.album || "",
           song.cover || "",
           song.extra || "",
+          song.duration,
         ),
         cover: song.cover,
         lrc: lyricURLs.line,

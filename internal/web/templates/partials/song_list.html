@@ -326,7 +326,7 @@
                     </button>
                     <div class="action-more-menu" role="menu" hidden>
                         {{ if not $isLocalSong }}
-                        <a href="{{$.Root}}/download?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}&album={{urlquery .Album}}&cover={{urlquery .Cover}}&extra={{urlquery (tojson .Extra)}}"
+                        <a href="{{$.Root}}/download?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}&album={{urlquery .Album}}&cover={{urlquery .Cover}}&extra={{urlquery (tojson .Extra)}}&duration={{.Duration}}"
                            id="dl-{{.ID}}" class="btn-circle btn-dl btn-download" title="保存到本地目录" target="_blank" rel="noopener">
                             <i class="fa-solid fa-download"></i>
                         </a>
