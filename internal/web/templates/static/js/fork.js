@@ -294,12 +294,19 @@ function lyricCheckEscHandler(e) {
   if (e.key === "Escape") closeLyricCheckModal();
 }
 
+// 弹窗每换一次视图（列表、候选搜索、关闭）序号加一；异步请求回来时序号变了就丢弃结果，
+// 避免慢的旧请求覆盖当前视图（例如快速换关键词后显示上一次搜索的候选）。
+let lyricCheckViewSeq = 0;
+let lyricPreviewSeq = 0;
+
 function closeLyricCheckModal() {
+  lyricCheckViewSeq += 1;
   document.getElementById("lyric-check-modal-overlay")?.remove();
   document.removeEventListener("keydown", lyricCheckEscHandler);
 }
 
 function setLyricCheckHeader(titleText, subtitleText) {
+  lyricCheckViewSeq += 1;
   const overlay = ensureLyricCheckModal();
   overlay.querySelector(".lyric-check-title-text").textContent = titleText;
   overlay.querySelector(".lyric-check-subtitle").textContent = subtitleText;
@@ -313,26 +320,33 @@ function lyricCheckStateMessage(body, icon, text, isError = false) {
   body.replaceChildren(box);
 }
 
+// 网络失败（fetch 抛错）也按失败响应返回 status 0，调用方统一走 !ok 分支显示错误。
 async function lyricCheckFetchJSON(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "X-Requested-With": "XMLHttpRequest",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...(options.headers || {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    return { ok: false, status: 0, payload: { error: `网络请求失败：${error?.message || error}` } };
+  }
   const payload = await response.json().catch(() => ({}));
   return { ok: response.ok, status: response.status, payload };
 }
 
 async function openLyricCheckModal(refresh = false) {
   const body = setLyricCheckHeader("歌词检查", "识别下载目录里每首歌的歌词类型；逐行歌词可从 QQ 音乐换成逐字");
+  const seq = lyricCheckViewSeq;
   lyricCheckStateMessage(body, "fa-solid fa-spinner fa-spin", "正在读取本地歌词...");
   const { ok, payload } = await lyricCheckFetchJSON(
     `${API_ROOT}/local_music/lyric_check${refresh ? "?refresh=1" : ""}`,
   );
-  if (!document.getElementById("lyric-check-modal-overlay")) return;
+  if (seq !== lyricCheckViewSeq) return;
   if (!ok) {
     lyricCheckStateMessage(body, "fa-solid fa-circle-exclamation", payload.error || "读取失败", true);
     return;
@@ -427,11 +441,12 @@ function lyricDiffLabel(candidate) {
 
 async function openLyricCandidates(id, fromList, keyword = "") {
   const body = setLyricCheckHeader("找逐字歌词", "从 QQ 音乐选择同一首歌；时长一致可直接嵌入");
+  const seq = lyricCheckViewSeq;
   lyricCheckStateMessage(body, "fa-solid fa-spinner fa-spin", "正在搜索 QQ 音乐...");
   const query = new URLSearchParams({ id });
   if (keyword) query.set("q", keyword);
   const { ok, payload } = await lyricCheckFetchJSON(`${API_ROOT}/local_music/lyric_candidates?${query}`);
-  if (!document.getElementById("lyric-check-modal-overlay")) return;
+  if (seq !== lyricCheckViewSeq) return;
   const local = payload.local || {};
   const view = lyricEl("div", "lyric-candidates");
 
@@ -522,12 +537,15 @@ async function showLyricPreview(id, local, candidate, preview, fromList, row) {
   row.parentElement?.querySelectorAll(".lyric-candidate-row.is-selected").forEach((el) => el.classList.remove("is-selected"));
   row.classList.add("is-selected");
   preview.hidden = false;
+  const seq = ++lyricPreviewSeq;
+  const viewSeq = lyricCheckViewSeq;
   lyricCheckStateMessage(preview, "fa-solid fa-spinner fa-spin", "正在获取歌词...");
   const { ok, payload } = await lyricCheckFetchJSON(`${API_ROOT}/local_music/lyric_preview`, {
     method: "POST",
     body: JSON.stringify(candidate),
   });
-  if (!row.classList.contains("is-selected")) return;
+  // 只显示最后一次点开的候选，且视图没换过。
+  if (seq !== lyricPreviewSeq || viewSeq !== lyricCheckViewSeq) return;
   if (!ok) {
     lyricCheckStateMessage(preview, "fa-solid fa-circle-exclamation", payload.error || "获取歌词失败", true);
     return;
@@ -583,15 +601,21 @@ async function showLyricPreview(id, local, candidate, preview, fromList, row) {
 
 async function applyLyricCandidate(id, candidate, force, button, fromList) {
   const label = button.textContent;
+  const viewSeq = lyricCheckViewSeq;
   button.disabled = true;
   button.textContent = "正在写入...";
-  const { ok, status, payload } = await lyricCheckFetchJSON(`${API_ROOT}/local_music/lyric_apply`, {
-    method: "POST",
-    body: JSON.stringify({ id, candidate, force }),
-  });
-  if (!ok) {
+  let result;
+  try {
+    result = await lyricCheckFetchJSON(`${API_ROOT}/local_music/lyric_apply`, {
+      method: "POST",
+      body: JSON.stringify({ id, candidate, force }),
+    });
+  } finally {
     button.disabled = false;
     button.textContent = label;
+  }
+  const { ok, status, payload } = result;
+  if (!ok) {
     if (status === 409) {
       showToast("时长不一致", "请先预览确认是同一版本，再选择“仍然嵌入”。", "warning", 6000);
     } else if (status === 401) {
@@ -603,7 +627,7 @@ async function applyLyricCandidate(id, candidate, force, button, fromList) {
   }
   showToast(
     "已嵌入逐字歌词",
-    payload.sidecar ? "同名 .lrc 已一并替换，旧文件备份为 .lrc.bak。" : "歌词已写入歌曲文件。",
+    payload.sidecar ? "同名 .lrc 已一并替换，最早的原始歌词保留在 .lrc.bak。" : "歌词已写入歌曲文件。",
     "success",
     5000,
   );
@@ -613,6 +637,8 @@ async function applyLyricCandidate(id, candidate, force, button, fromList) {
     track.kind = payload.kind;
     lyricCheckState.counts[track.kind] = (lyricCheckState.counts[track.kind] || 0) + 1;
   }
+  // 写入期间用户已切到别的视图（或关了弹窗）时，不把当前视图拉回列表。
+  if (viewSeq !== lyricCheckViewSeq) return;
   if (fromList) {
     renderLyricCheckList();
   } else {

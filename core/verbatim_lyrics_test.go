@@ -107,6 +107,13 @@ func TestReplaceLocalSongLyricMP3KeepsTagsAndBacksUpSidecar(t *testing.T) {
 	if got, _ := os.ReadFile(lrc + ".bak"); string(got) != "[00:01.00]旧逐行\n" {
 		t.Fatalf("backup = %q", got)
 	}
+	// 再嵌入一次：.lrc.bak 仍是最早的原始歌词，不被第一次写入的结果覆盖。
+	if err := ReplaceLocalSongLyric(path, "[00:01.00]<00:01.00>再<00:02.00>", lrc); err != nil {
+		t.Fatalf("second ReplaceLocalSongLyric: %v", err)
+	}
+	if got, _ := os.ReadFile(lrc + ".bak"); string(got) != "[00:01.00]旧逐行\n" {
+		t.Fatalf("backup after second apply = %q", got)
+	}
 	if info, _ := os.Stat(lrc); info.Mode().Perm() != 0o600 {
 		t.Fatalf("sidecar mode = %v", info.Mode().Perm())
 	}

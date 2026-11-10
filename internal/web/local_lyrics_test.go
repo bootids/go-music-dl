@@ -179,6 +179,9 @@ func TestLocalLyricApplyWritesTagAndSidecar(t *testing.T) {
 	if code != http.StatusOK || payload["forced"] != true {
 		t.Fatalf("force: %d %v", code, payload)
 	}
+	if data, _ := os.ReadFile(lrc + ".bak"); string(data) != "[00:01.00]第一行" {
+		t.Fatalf("backup after second apply = %q", data)
+	}
 }
 
 func TestLocalLyricApplyRequiresSameOrigin(t *testing.T) {

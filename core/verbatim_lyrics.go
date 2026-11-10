@@ -317,7 +317,7 @@ func FetchQQVerbatimLyric(song *model.Song) (string, error) {
 }
 
 // ReplaceLocalSongLyric 把歌词写进已存在的本地音频文件（不重编码，保留其他标签和封面），
-// 并在有同名 .lrc 时一并替换，旧 .lrc 备份为 .lrc.bak。
+// 并在有同名 .lrc 时一并替换；第一次替换前的 .lrc 备份为 .lrc.bak，之后不再覆盖。
 func ReplaceLocalSongLyric(audioPath string, lyric string, sidecarPath string) error {
 	lyric = strings.TrimSpace(lyric)
 	if lyric == "" {
@@ -337,7 +337,13 @@ func ReplaceLocalSongLyric(audioPath string, lyric string, sidecarPath string) e
 	if err != nil {
 		return err
 	}
-	updated, err := EmbedSongMetadata(data, &model.Song{Ext: ext}, lyric, nil, "")
+	var updated []byte
+	if ext == "mp3" {
+		// 只换 USLT 帧，保留其他帧和标签版本（EmbedSongMetadata 会把 v2.4 重写成只剩基础帧的 v2.3）。
+		updated, err = replaceMP3LyricFrame(data, lyric)
+	} else {
+		updated, err = EmbedSongMetadata(data, &model.Song{Ext: ext}, lyric, nil, "")
+	}
 	if err != nil {
 		return err
 	}
@@ -345,8 +351,9 @@ func ReplaceLocalSongLyric(audioPath string, lyric string, sidecarPath string) e
 		return err
 	}
 	if strings.TrimSpace(sidecarPath) != "" {
+		// 只在还没有 .lrc.bak 时备份，多次嵌入也保留最早的原始歌词。
 		if old, err := os.ReadFile(sidecarPath); err == nil {
-			if err := os.WriteFile(sidecarPath+".bak", old, 0o644); err != nil {
+			if err := writeFileIfAbsent(sidecarPath+".bak", old, 0o644); err != nil {
 				return fmt.Errorf("备份旧歌词失败: %w", err)
 			}
 		}
@@ -360,6 +367,23 @@ func ReplaceLocalSongLyric(audioPath string, lyric string, sidecarPath string) e
 		}
 	}
 	return nil
+}
+
+// writeFileIfAbsent 只在文件不存在时创建并写入，已存在时不动。
+func writeFileIfAbsent(path string, data []byte, mode os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return err
+	}
+	return f.Close()
 }
 
 // writeFileAtomically 先写同目录临时文件再 rename，播放或扫描中的读者不会读到半个文件。
