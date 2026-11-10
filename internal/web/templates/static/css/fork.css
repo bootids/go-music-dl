@@ -2,6 +2,9 @@
    在 index.html 中紧跟 style.css 之后加载。 */
 
 /* 设置页“文件整理” */
+/* 歌手别名的多行输入框，沿用 style.css 里 .cookie-item input 的外观。 */
+.cookie-item textarea { width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: inherit; box-sizing: border-box; outline: none; resize: vertical; }
+.cookie-item textarea:focus { border-color: #10b981; }
 .file-organize-template-label {
     display: block;
     margin-top: 13px;

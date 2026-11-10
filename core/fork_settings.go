@@ -26,3 +26,9 @@ func validateAppleWebSettings(settings WebSettings) error {
 	}
 	return nil
 }
+
+// normalizeArtistAliasSettings 是 normalizeWebSettings 的钩子：去掉歌手别名设置首尾的空白。
+func normalizeArtistAliasSettings(settings WebSettings) WebSettings {
+	settings.ArtistAliases = strings.TrimSpace(settings.ArtistAliases)
+	return settings
+}

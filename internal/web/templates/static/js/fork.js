@@ -8,6 +8,7 @@
 const FORK_WEB_SETTINGS_DEFAULTS = {
   organizeByArtistAlbum: false,
   cleanAlbumEpisode: false,
+  artistAliases: "",
   appleWrapperUrl: "",
   appleAudioQuality: "alac",
 };
@@ -24,6 +25,9 @@ function normalizeForkWebSettings(next, raw) {
   }
   if (typeof raw.cleanAlbumEpisode === "boolean") {
     next.cleanAlbumEpisode = raw.cleanAlbumEpisode;
+  }
+  if (typeof raw.artistAliases === "string") {
+    next.artistAliases = raw.artistAliases.trim();
   }
   if (typeof raw.appleWrapperUrl === "string") {
     next.appleWrapperUrl = raw.appleWrapperUrl.trim();
@@ -75,6 +79,10 @@ function applyForkWebSettings() {
   if (cleanAlbumToggle) {
     cleanAlbumToggle.checked = webSettings.cleanAlbumEpisode;
   }
+  const artistAliasesInput = document.getElementById("setting-artist-aliases");
+  if (artistAliasesInput) {
+    artistAliasesInput.value = webSettings.artistAliases;
+  }
   bindFileOrganizePreviewEvents();
   refreshFilenamePreview();
 }
@@ -88,6 +96,8 @@ function collectForkWebSettings() {
     cleanAlbumEpisode: !!document.getElementById(
       "setting-clean-album-episode",
     )?.checked,
+    artistAliases:
+      document.getElementById("setting-artist-aliases")?.value || "",
     appleWrapperUrl:
       document.getElementById("setting-apple-wrapper-url")?.value || "",
     appleAudioQuality:

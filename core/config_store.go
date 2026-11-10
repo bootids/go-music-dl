@@ -55,6 +55,7 @@ type WebSettings struct {
 	DownloadFilenameTemplate string `json:"downloadFilenameTemplate"`
 	OrganizeByArtistAlbum    bool   `json:"organizeByArtistAlbum"`
 	CleanAlbumEpisode        bool   `json:"cleanAlbumEpisode"`
+	ArtistAliases            string `json:"artistAliases"`
 	DownloadTipDuration      int    `json:"downloadTipDuration"`
 	WebDAVEnabled            bool   `json:"webdavEnabled"`
 	WebDAVURL                string `json:"webdavUrl"`
@@ -303,6 +304,7 @@ func normalizeWebSettings(settings WebSettings) WebSettings {
 	settings.SodaSignerToken = strings.TrimSpace(settings.SodaSignerToken)
 	settings.SodaClientDir = normalizeSodaClientDir(settings.SodaClientDir)
 	settings = normalizeAppleWebSettings(settings)
+	settings = normalizeArtistAliasSettings(settings)
 	settings.ShortcutPlayPause = normalizeShortcutBinding(settings.ShortcutPlayPause)
 	settings.ShortcutPrevious = normalizeShortcutBinding(settings.ShortcutPrevious)
 	settings.ShortcutNext = normalizeShortcutBinding(settings.ShortcutNext)
