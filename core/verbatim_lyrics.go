@@ -341,6 +341,9 @@ func ReplaceLocalSongLyric(audioPath string, lyric string, sidecarPath string) e
 	if ext == "mp3" {
 		// 只换 USLT 帧，保留其他帧和标签版本（EmbedSongMetadata 会把 v2.4 重写成只剩基础帧的 v2.3）。
 		updated, err = replaceMP3LyricFrame(data, lyric)
+	} else if ext == "m4a" {
+		// 只换 ©lyr，保留 ---- 自定义项（ReplayGain、MusicBrainz 等）和其他盒子；ffmpeg 重封装会丢掉这些。
+		updated, err = EditMP4Tags(data, MP4TagEdit{Lyric: &lyric})
 	} else {
 		updated, err = EmbedSongMetadata(data, &model.Song{Ext: ext}, lyric, nil, "")
 	}

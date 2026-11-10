@@ -123,7 +123,8 @@ func TestReplaceLocalSongLyricMP3KeepsTagsAndBacksUpSidecar(t *testing.T) {
 	}
 }
 
-// m4a / flac 走 ffmpeg：确认歌词写进可读的标签，且原有标签、曲目号、封面都还在。
+// m4a 走自写的 MP4 标签编辑、flac 走 ffmpeg：确认歌词写进可读的标签，且原有标签、曲目号、封面都还在；
+// m4a 的 ---- 自定义项（ffmpeg 重封装会丢）也要原样保留。
 func TestReplaceLocalSongLyricFFmpegFormats(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -147,6 +148,16 @@ func TestReplaceLocalSongLyricFFmpegFormats(t *testing.T) {
 				"-map", "0:a", "-map", "1:v", "-c:a", tc.codec, "-c:v", "copy", "-disposition:v", "attached_pic",
 				"-metadata", "title=歌", "-metadata", "artist=歌手", "-metadata", "album=专辑",
 				"-metadata", "album_artist=群星", "-metadata", "track="+tc.track, "-metadata", "lyrics=[00:01.00]旧逐行", path)
+			if tc.ext == "m4a" {
+				data, _ := os.ReadFile(path)
+				data, err := editMP4Ilst(data, []mp4IlstEdit{{typ: "----", atom: tFreeform}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, data, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 
 			if err := ReplaceLocalSongLyric(path, testEnhancedLyric, ""); err != nil {
 				t.Fatalf("ReplaceLocalSongLyric: %v", err)
@@ -169,6 +180,9 @@ func TestReplaceLocalSongLyricFFmpegFormats(t *testing.T) {
 			}
 			if strings.TrimSpace(m.Lyrics()) != testEnhancedLyric {
 				t.Fatalf("lyrics = %q", m.Lyrics())
+			}
+			if data, _ := os.ReadFile(path); tc.ext == "m4a" && !bytes.Contains(data, tFreeform) {
+				t.Fatal("freeform ---- atom lost")
 			}
 		})
 	}
