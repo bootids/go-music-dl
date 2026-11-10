@@ -211,6 +211,12 @@ func TestDownloadFilenamePreview(t *testing.T) {
 		ex[1]["albumTag"] != "声生不息·家年华" {
 		t.Fatalf("organized preview = %v", ex)
 	}
+	// Apple 示例带音轨号，QQ 示例没有：没有时连同分隔符一起省略。
+	ex = get("template=" + url.QueryEscape("{track}. {name}") + "&organizeByArtistAlbum=1")
+	if ex[0]["path"] != "周杰伦/叶惠美/晴天.flac" ||
+		ex[1]["path"] != "示例歌手/声生不息·家年华 (第九期 live)/07. 示例歌曲.m4a" {
+		t.Fatalf("track preview = %v", ex)
+	}
 	// 预览只读表单值，不改动已保存设置。
 	if s := core.GetWebSettings(); s.OrganizeByArtistAlbum || s.CleanAlbumEpisode {
 		t.Fatalf("preview changed saved settings: %+v", s)

@@ -303,12 +303,15 @@ func TestDownloadAppleWritesTrackDiscDate(t *testing.T) {
 		stubItunesLookup(t, fantomeLookup(""))
 		callerExtra := map[string]string{"storefront": "cn"}
 		song := &model.Song{Source: "apple", ID: testAppleSongID, Name: "道", Artist: "宇多田ヒカル", Album: "Fantôme", Extra: callerExtra}
-		res, err := DownloadSongDataWithTemplateContext(context.Background(), song, false, false, "{artist} - {name}")
+		res, err := DownloadSongDataWithTemplateContext(context.Background(), song, false, false, "{track}. {name}")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if res.Ext != "m4a" || res.Warning != "" {
 			t.Fatalf("ext = %q, warning = %q", res.Ext, res.Warning)
+		}
+		if res.Filename != "07. 道.m4a" {
+			t.Fatalf("filename = %q, want track prefix", res.Filename)
 		}
 		assertAppleTrackTags(t, res.Data)
 		if len(callerExtra) != 1 || len(song.Extra) != 1 {
@@ -319,12 +322,15 @@ func TestDownloadAppleWritesTrackDiscDate(t *testing.T) {
 	t.Run("lookup fails", func(t *testing.T) {
 		stubItunesLookup(t, func(string, string) (int, string) { return http.StatusServiceUnavailable, "" })
 		song := &model.Song{Source: "apple", ID: testAppleSongID, Name: "道", Artist: "宇多田ヒカル", Album: "Fantôme"}
-		res, err := DownloadSongDataWithTemplateContext(context.Background(), song, false, false, "{artist} - {name}")
+		res, err := DownloadSongDataWithTemplateContext(context.Background(), song, false, false, "{track}. {name}")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if res.Warning != "" {
 			t.Fatalf("warning = %q, want none", res.Warning)
+		}
+		if res.Filename != "道.m4a" {
+			t.Fatalf("filename = %q, want no track prefix", res.Filename)
 		}
 		meta, err := tag.ReadFrom(bytes.NewReader(res.Data))
 		if err != nil {

@@ -225,6 +225,7 @@ func BuildDownloadFilenameWithOptions(song *model.Song, ext string, opts Downloa
 	if opts.OrganizeByArtistAlbum && !strings.ContainsAny(template, "/\\") {
 		template = artistAlbumDirPrefix + template
 	}
+	template = renderTrackToken(template, song)
 
 	name := "Unknown"
 	artist := "Unknown"
