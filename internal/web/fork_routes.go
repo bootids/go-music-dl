@@ -43,13 +43,13 @@ func requestAuthenticated(c *gin.Context) bool {
 }
 
 // downloadFilenamePreviewSamples 是设置页“文件整理”预览用的示例歌曲：
-// 一首普通专辑，一首带综艺期数的专辑。
+// 一首普通专辑（没有音轨号），一首带综艺期数和音轨号的 Apple 专辑。
 var downloadFilenamePreviewSamples = []struct {
 	song model.Song
 	ext  string
 }{
 	{song: model.Song{ID: "preview-1", Source: "qq", Name: "晴天", Artist: "周杰伦", Album: "叶惠美"}, ext: "flac"},
-	{song: model.Song{ID: "preview-2", Source: "apple", Name: "示例歌曲", Artist: "示例歌手", Album: "声生不息·家年华 (第九期 live)"}, ext: "m4a"},
+	{song: model.Song{ID: "preview-2", Source: "apple", Name: "示例歌曲", Artist: "示例歌手", Album: "声生不息·家年华 (第九期 live)", Extra: map[string]string{"tag_track": "7", "tag_track_total": "11"}}, ext: "m4a"},
 }
 
 // downloadFilenamePreviewHandler 按页面上尚未保存的模板和开关生成示例保存路径，

@@ -12,7 +12,7 @@
                     </div>
                     <label for="setting-download-filename-template" class="file-organize-template-label">音乐文件名模板</label>
                     <input type="text" id="setting-download-filename-template" placeholder="{artist} - {name}">
-                    <p class="setting-hint" style="margin-left: 0;">支持 <code>{name}</code>、<code>{artist}</code>、<code>{album}</code>、<code>{source}</code>、<code>{id}</code>、<code>{ext}</code>。未写 <code>{ext}</code> 时会自动追加扩展名；可用 <code>/</code> 创建子目录。</p>
+                    <p class="setting-hint" style="margin-left: 0;">支持 <code>{name}</code>、<code>{artist}</code>、<code>{album}</code>、<code>{source}</code>、<code>{id}</code>、<code>{ext}</code>、<code>{track}</code>（音轨号，仅 Apple 下载有，没有时连同后面的分隔符一起省略）。未写 <code>{ext}</code> 时会自动追加扩展名；可用 <code>/</code> 创建子目录。</p>
                 </div>
                 <div class="cookie-item setting-item">
                     <label class="setting-toggle" for="setting-organize-by-artist-album">
