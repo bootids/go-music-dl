@@ -1305,7 +1305,7 @@ func preservedID3v23Frames(audioData []byte, replace map[string]bool) []byte {
 	return preserved
 }
 
-func embedMP3ID3v23Metadata(audioData []byte, title, artist, album, lyric string, coverData []byte, coverMime string) ([]byte, error) {
+func embedMP3ID3v23Metadata(audioData []byte, title, artist, album, albumArtist, lyric string, coverData []byte, coverMime string) ([]byte, error) {
 	var frames bytes.Buffer
 	replaceFrames := map[string]bool{}
 	if title != "" {
@@ -1323,7 +1323,9 @@ func embedMP3ID3v23Metadata(audioData []byte, title, artist, album, lyric string
 	if len(coverData) > 0 {
 		replaceFrames["APIC"] = true
 	}
+	albumArtistFrame := albumArtistID3Frame(albumArtist, replaceFrames)
 	frames.Write(preservedID3v23Frames(audioData, replaceFrames))
+	frames.Write(albumArtistFrame)
 
 	if title != "" {
 		frames.Write(id3v23Frame("TIT2", id3TextFramePayload(title)))
@@ -1723,6 +1725,7 @@ func EmbedSongMetadata(audioData []byte, song *model.Song, lyric string, coverDa
 		artist = strings.TrimSpace(song.Artist)
 		album = strings.TrimSpace(song.Album)
 	}
+	albumArtist := albumArtistForSong(song)
 	lyric = strings.TrimSpace(lyric)
 	coverMime = normalizeCoverMime(coverMime)
 	incomingCover := len(coverData) > 0
@@ -1758,13 +1761,13 @@ func EmbedSongMetadata(audioData []byte, song *model.Song, lyric string, coverDa
 	}
 
 	if ext == "mp3" {
-		return embedMP3ID3v23Metadata(audioData, title, artist, album, lyric, coverData, coverMime)
+		return embedMP3ID3v23Metadata(audioData, title, artist, album, albumArtist, lyric, coverData, coverMime)
 	}
 
-	return embedAudioMetadataByFFmpeg(audioData, ext, title, artist, album, lyric, coverData, coverMime)
+	return embedAudioMetadataByFFmpeg(audioData, ext, title, artist, album, albumArtist, lyric, coverData, coverMime)
 }
 
-func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, album, lyric string, coverData []byte, coverMime string) ([]byte, error) {
+func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, album, albumArtist, lyric string, coverData []byte, coverMime string) ([]byte, error) {
 	ffmpegPath, err := ResolveFFmpegPath()
 	if err != nil {
 		return nil, ErrFFmpegNotFound
@@ -1836,6 +1839,7 @@ func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, album, lyr
 	if album != "" {
 		args = append(args, "-metadata", "album="+album)
 	}
+	args = append(args, albumArtistFFmpegArgs(ext, albumArtist)...)
 	if lyric != "" {
 		args = append(args, "-metadata", "lyrics="+lyric)
 	}
