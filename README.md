@@ -156,6 +156,47 @@ QQ 下载需要有效 Cookie；汽水支持 Cookie + 签名获取会员整曲，
 
 FFmpeg 与 `ffprobe` 用于本地音乐探测和元数据写入。Docker 镜像和 Android APK 已内置；CLI、桌面和 iOS 包如需这些能力，请自行安装。可用 `ffmpeg -version` 检查。
 
+## Apple Music 完整下载
+
+默认情况下 Apple Music 只能下载 30 秒 preview。配置一个已登录的 [wrapper-lite](https://github.com/WorldObservationLog/wrapper/tree/lite) 服务后，单曲下载、保存到服务器、下载队列、专辑 / 歌单批量下载和 TUI 下载都会改为下载完整音轨，FairPlay 解密在本程序内完成；歌词改从 wrapper 获取并转成 LRC，封面和标签沿用现有的 FFmpeg 内嵌流程。网页和 TUI 的在线播放仍然使用 preview（浏览器播放不了 ALAC）。
+
+**前提条件**
+
+* 你自己的、有效的 Apple Music 订阅账号。
+* wrapper-lite 只提供 amd64 Linux 版本。macOS、Windows 或 arm64 主机请使用 wrapper 仓库 Actions 产物里的 `wrapper-lite-qemu`（内置 QEMU 虚拟机，把 HTTP 接口转发到本机）。
+* 建议安装 FFmpeg（Docker 镜像已内置）。缺少 FFmpeg 时文件保持分片 MP4，不写入封面和标签。
+
+**Docker Compose**
+
+```bash
+cp .env.example .env   # 填写 APPLE_ID_USERNAME 和 APPLE_ID_PASSWORD
+docker compose -f docker-compose.yml -f docker-compose.apple.yml up -d
+```
+
+`docker-compose.apple.yml` 是可选的覆盖文件：它会额外启动 `wrapper` 容器，并给 `music-dl` 设置 `MUSIC_DL_APPLE_WRAPPER_URL=http://wrapper:12340`。默认的 `docker-compose.yml` 不受影响。GHCR 镜像拉取失败时，可以把文件里的 `image:` 换成 `build: https://github.com/WorldObservationLog/wrapper.git#lite` 本地构建。
+
+**首次登录与两步验证**：第一次启动时 wrapper 会用 `.env` 里的账号登录。账号开启了两步验证时，请在 10 分钟内把收到的验证码写进 wrapper 的数据目录。该目录由 wrapper 容器设为 root 所有，Linux 下普通用户需要 `sudo`：
+
+```bash
+echo 123456 | sudo tee ./wrapper-data/2fa.txt
+```
+
+登录成功后令牌保存在 `./wrapper-data`（不要放进 `./data`，music-dl 启动时会改写 `./data` 的属主），之后重启无需再次登录，`.env` 里的账号密码可以清空。可用 `docker compose logs -f wrapper` 查看登录进度。
+
+**不用 Docker 时**：自行运行 wrapper-lite（或 `wrapper-lite-qemu`），然后在 Web“设置 → 平台 Cookie → Apple Music 完整下载（wrapper-lite）”里填写 wrapper 地址（如 `http://127.0.0.1:12340`），或设置环境变量 `MUSIC_DL_APPLE_WRAPPER_URL`。环境变量优先于设置页；TUI 只能通过环境变量或已保存的设置启用。
+
+**音质**
+
+* `alac`（默认）：ALAC 无损，最高 192 kHz；歌曲没有 ALAC 版本时自动改下 AAC。
+* `aac`：AAC 256 kbps。
+
+> [!WARNING]
+> wrapper-lite 的 12340 端口没有任何鉴权，任何能访问它的人都能用你的账号取密钥。不要把它映射到公网或局域网，覆盖文件里只用了 `expose`。
+
+**不支持**：杜比全景声（Atmos）、MV、电台，以及 aac-lc 等其他编码。
+
+**声明**：此功能仅供个人使用你自己订阅的内容。使用时请遵守 Apple Media Services 条款和所在地法律，由此产生的账号风险和法律责任由使用者自行承担。
+
 ## 新增改动（简要）
 
 * **排行榜与歌单**：聚合各平台榜单和热门单曲，补齐分类歌单、我的歌单、链接解析及批量操作。
@@ -368,7 +409,7 @@ TUI 在输入界面按 `w` 直接拉取推荐歌单，然后回车进详情。
 | Jamendo     | `jamendo`  | ✅   | ✅   | ✅   | ✅       | ⚠️     | ❌       | ❌       | ❌       | ❌          | ✅       | ✅           | ✅       | ✅       | ✅           | 歌单搜索可能返回空，公开歌单链接可解析                                                                                                                            |
 | JOOX        | `joox`     | ✅   | ✅   | ✅   | ✅       | ✅       | ❌       | ✅       | ❌       | ❌          | ✅       | ✅           | ✅       | ✅       | ✅           | 歌单支持 OpenJOOX 接口和网页数据兜底                                                                                                                              |
 | Bilibili    | `bilibili` | ✅   | ✅   | ✅   | ✅       | ✅       | ❌       | ❌       | ❌       | ✅          | ✅       | ✅           | ❌       | ❌       | ❌           | 支持 FLAC 无损                                                                                                                                                    |
-| Apple Music | `apple`    | ✅   | ⚠️ | ✅   | ✅       | ✅       | ❌       | ✅       | ❌       | ❌          | ✅       | ✅           | ✅       | ✅       | ✅           | 下载仅 preview，完整需 gamdl 解密                                                                                                                                 |
+| Apple Music | `apple`    | ✅   | ⚠️ | ✅   | ✅       | ✅       | ❌       | ✅       | ❌       | ❌          | ✅       | ✅           | ✅       | ✅       | ✅           | 配置 wrapper-lite 后完整下载（ALAC/AAC），否则仅 30 秒 preview；播放始终为 preview，见 [Apple Music 完整下载](#apple-music-完整下载) |
 | Spotify     | `spotify`  | ✅   | ⚠️ | ✅   | ✅       | ✅       | ✅       | ✅       | ✅       | ❌          | ✅       | ✅           | ✅       | ✅       | ✅           | 官方 API 仅提供 30 秒 preview；歌曲 / 专辑 / 歌单搜索、公开链接解析、分类、榜单和歌词均无需凭据，搜索走匿名 Web Player，配置凭据后优先官方 API；个人歌单仍需 OAuth |
 
 > `⚠️` 表示方法已接入，但平台搜索接口结果不稳定；优先使用已知 ID 或链接解析。
@@ -466,6 +507,15 @@ Web 右上角“设置”里可添加平台 Cookie。网易云音乐、QQ 音乐
 **Q: 如何查看歌单分类和我的歌单？**
 Web 首页歌单入口旁提供“歌单分类”和“我的歌单”。歌单分类可直接浏览支持平台的官方分类，其中汽水音乐提供发现页的 13 个推荐分类（每个分类会聚合多轮随机推荐并去重）；我的歌单需要先配置对应平台 Cookie，Spotify 则配置 OAuth Token，目前支持网易云音乐、QQ 音乐、酷狗音乐、汽水音乐和 Spotify。
 
+**Q: Apple Music 仍然只下载到 30 秒，或提示 wrapper 未登录（`apple wrapper is not logged in`）？**
+先确认设置页或 `MUSIC_DL_APPLE_WRAPPER_URL` 填了 wrapper 地址。wrapper 的 `/status` 返回空的 regions 表示还没登录成功：查看 wrapper 日志，必要时删掉 `./wrapper-data`（root 所有，需 `sudo rm -rf ./wrapper-data`）后重新登录，并按提示写入 `2fa.txt`。
+
+**Q: Apple Music 下载报 `apple wrapper /m3u8` 或 `/key` 错误？**
+最常见的原因是地区不匹配：歌曲必须在 wrapper 登录账号所在地区的曲库里。搜索或解析用的地区和账号地区不同、或歌曲在该地区下架时，wrapper 会直接返回错误，本程序原样显示。
+
+**Q: Apple Music 下载报 `no usable audio variant`？**
+这首歌没有可下载的 ALAC 或 AAC 256 版本（例如只有 Atmos），目前不支持。
+
 **Q: 开启“内嵌元数据”后没生效？**
 先确认系统已安装 FFmpeg 且 `ffmpeg -version` 可执行；若不可用，程序会降级为原始音频下载（不内嵌封面/歌词）。
 
@@ -484,6 +534,7 @@ go-music-dl/
 │   └── music-dl/          # CLI/TUI 主程序
 ├── core/                  # 核心业务逻辑
 ├── internal/
+│   ├── applemusic/        # Apple Music 整曲下载：wrapper-lite 客户端、HLS 解析、FairPlay 解密
 │   ├── cli/               # TUI 界面 (如: ui.go)
 │   └── web/               # 重构后的 Web 后端服务
 │       ├── templates/     # 前端模板与静态资源分离
@@ -505,6 +556,7 @@ go-music-dl/
 ├── screenshots/           # 截图资源
 ├── docker-compose.yml     # Docker 生产环境配置 (直接拉取镜像)
 ├── docker-compose.dev.yml # Docker 开发环境配置 (本地构建)
+├── docker-compose.apple.yml # 可选：Apple Music 整曲下载 (wrapper-lite)
 ├── Dockerfile             # Docker 构建配置
 ├── go.mod                 # Go 模块配置
 ├── README.md              # 主项目说明
@@ -554,6 +606,7 @@ go-music-dl/
 * **QQ 音乐**: [Suxiaoqinx/qqmusic_flac](https://github.com/Suxiaoqinx/qqmusic_flac) - QQ 音乐 FLAC 解析
 * **逐字歌词展示参考**: [chenmozhijin/LDDC](https://github.com/chenmozhijin/LDDC) - 原文 / 译文 / 罗马音逐字歌词的组织与展示思路参考
 * **汽水音乐接口参考**: [Zencok/baka-plugins](https://github.com/Zencok/baka-plugins) - 汽水音乐搜索、取流和扫码接口参考
+* **Apple Music 整曲**: [WorldObservationLog/wrapper](https://github.com/WorldObservationLog/wrapper) 的 wrapper-lite 与 [Temari](https://github.com/WorldObservationLog/Temari)，第三方许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 * **汽水音乐整曲方案**: [sodahub-org/sodam](https://github.com/sodahub-org/sodam) - Cookie + 设备指纹 + 签名（调官方客户端 bdms.node）取整曲的完整实现，本项目汽水会员整曲能力的直接源头
 
 ## 免责声明

@@ -2,11 +2,13 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/guohuiyuan/go-music-dl/core"
@@ -107,4 +109,60 @@ func TestDownloadQueueAPIPersistsAppendAndRejectsCrossOrigin(t *testing.T) {
 		t.Fatal(total, err)
 	}
 
+}
+
+func TestDownloadQueueAPIKeepsDuration(t *testing.T) {
+	if err := core.CloseConfigDB(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MUSIC_DL_CONFIG_DB", filepath.Join(t.TempDir(), "settings.db"))
+	t.Cleanup(func() {
+		if err := core.CloseConfigDB(); err != nil {
+			t.Error(err)
+		}
+	})
+	q, err := core.OpenDownloadQueue()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	RegisterDownloadQueueRoutes(r.Group("/music"), q)
+	body := []byte(`{"request_id":"d","songs":[{"id":"1","source":"apple","name":"One","duration":200}]}`)
+	req := httptest.NewRequest("POST", "http://music.test/music/api/downloads/queue", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Origin", "http://music.test")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusAccepted {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	got := make(chan int, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := q.Start(ctx, func(in core.DownloadTaskInput) (core.DownloadTaskResult, error) {
+		got <- in.Song.Duration
+		return core.DownloadTaskResult{}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case d := <-got:
+		if d != 200 {
+			t.Fatalf("queued song duration = %d, want 200", d)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("queued task was not processed")
+	}
+	// 等任务落库后再关库，避免 worker 写入已关闭的数据库。
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		if _, total, _, err := q.List(1, 10, "active"); err == nil && total == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("queued task did not finish")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

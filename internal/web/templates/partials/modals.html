@@ -375,6 +375,23 @@
                     <label for="setting-soda-signer-token">签名服务 Token</label>
                     <input type="password" id="setting-soda-signer-token" placeholder="留空则保留已保存的 Token" autocomplete="new-password">
                 </div>
+                <div class="settings-panel-subtitle">Apple Music 完整下载（wrapper-lite）</div>
+                <p class="settings-panel-hint">wrapper 无鉴权，请勿暴露公网；播放仍为 30 秒试听</p>
+                <div class="cookie-item">
+                    <label for="setting-apple-wrapper-url">wrapper-lite 地址</label>
+                    <div class="cookie-input-row">
+                        <input type="url" id="setting-apple-wrapper-url" placeholder="http://127.0.0.1:12340" autocomplete="off" spellcheck="false">
+                        <button type="button" id="apple-wrapper-test" class="cookie-qr-btn" onclick="testAppleWrapper()">检测</button>
+                    </div>
+                    <p class="setting-hint" id="setting-apple-wrapper-state" style="margin-left: 0;"></p>
+                </div>
+                <div class="cookie-item">
+                    <label for="setting-apple-audio-quality">下载音质</label>
+                    <select id="setting-apple-audio-quality">
+                        <option value="alac">ALAC 无损（≤192kHz）</option>
+                        <option value="aac">AAC 256</option>
+                    </select>
+                </div>
             </section>
 
             <div class="settings-save-bar">

@@ -11,14 +11,15 @@ import (
 )
 
 type queueSongRequest struct {
-	ID     string `json:"id"`
-	Source string `json:"source"`
-	Name   string `json:"name"`
-	Artist string `json:"artist"`
-	Album  string `json:"album"`
-	Cover  string `json:"cover"`
-	Extra  string `json:"extra"`
-	Embed  bool   `json:"embed"`
+	ID       string `json:"id"`
+	Source   string `json:"source"`
+	Name     string `json:"name"`
+	Artist   string `json:"artist"`
+	Album    string `json:"album"`
+	Cover    string `json:"cover"`
+	Extra    string `json:"extra"`
+	Embed    bool   `json:"embed"`
+	Duration int    `json:"duration"`
 }
 
 func RegisterDownloadQueueRoutes(api *gin.RouterGroup, queue *core.DownloadQueue) {
@@ -57,7 +58,7 @@ func RegisterDownloadQueueRoutes(api *gin.RouterGroup, queue *core.DownloadQueue
 				c.JSON(400, gin.H{"error": "歌曲缺少 ID 或音源，或属于本地音乐"})
 				return
 			}
-			inputs = append(inputs, core.DownloadTaskInput{Song: model.Song{ID: s.ID, Source: s.Source, Name: s.Name, Artist: s.Artist, Album: s.Album, Cover: s.Cover, Extra: parseSongExtraQuery(s.Extra)}, Directory: core.DownloadDirOrDefault(settings.DownloadDir), FilenameTemplate: settings.DownloadFilenameTemplate, Embed: s.Embed})
+			inputs = append(inputs, core.DownloadTaskInput{Song: model.Song{ID: s.ID, Source: s.Source, Name: s.Name, Artist: s.Artist, Album: s.Album, Cover: s.Cover, Extra: parseSongExtraQuery(s.Extra), Duration: max(s.Duration, 0)}, Directory: core.DownloadDirOrDefault(settings.DownloadDir), FilenameTemplate: settings.DownloadFilenameTemplate, Embed: s.Embed})
 		}
 		added, err := queue.Enqueue(req.RequestID, inputs)
 		if err != nil {

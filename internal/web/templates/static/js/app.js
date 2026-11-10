@@ -87,6 +87,8 @@ let webSettings = {
   sodaSignerToken: "",
   sodaClientDir: "",
   sodaLocalSignerAvailable: false,
+  appleWrapperUrl: "",
+  appleAudioQuality: "alac",
   vgChangeCover: false,
   vgChangeAudio: false,
   vgChangeLyric: false,
@@ -130,6 +132,8 @@ function normalizeWebSettings(raw) {
     sodaSignerToken: "",
     sodaClientDir: "",
     sodaLocalSignerAvailable: false,
+    appleWrapperUrl: "",
+    appleAudioQuality: "alac",
     vgChangeCover: false,
     vgChangeAudio: false,
     vgChangeLyric: false,
@@ -243,6 +247,19 @@ function normalizeWebSettings(raw) {
   }
   if (typeof raw.sodaLocalSignerAvailable === "boolean") {
     next.sodaLocalSignerAvailable = raw.sodaLocalSignerAvailable;
+  }
+  if (typeof raw.appleWrapperUrl === "string") {
+    next.appleWrapperUrl = raw.appleWrapperUrl.trim();
+  }
+  if (typeof raw.appleAudioQuality === "string") {
+    const quality = raw.appleAudioQuality.trim().toLowerCase();
+    next.appleAudioQuality = quality === "aac" ? "aac" : "alac";
+  }
+  if (typeof raw.appleWrapperConfigured === "boolean") {
+    next.appleWrapperConfigured = raw.appleWrapperConfigured;
+  }
+  if (typeof raw.appleWrapperEnvOverride === "boolean") {
+    next.appleWrapperEnvOverride = raw.appleWrapperEnvOverride;
   }
   if (typeof raw.vgChangeCover === "boolean") {
     next.vgChangeCover = raw.vgChangeCover;
@@ -812,6 +829,27 @@ function applyWebSettings(settings) {
       ? "已检测到本机签名器：留空地址即可用。"
       : "未检测到本机签名器：请安装汽水官方客户端（或 Node.js），或填写下面的远程签名服务地址。";
   }
+  const appleWrapperUrlInput = document.getElementById(
+    "setting-apple-wrapper-url",
+  );
+  const appleWrapperState = document.getElementById(
+    "setting-apple-wrapper-state",
+  );
+  if (appleWrapperUrlInput) {
+    appleWrapperUrlInput.value = webSettings.appleWrapperUrl;
+    appleWrapperUrlInput.disabled = !!webSettings.appleWrapperEnvOverride;
+  }
+  if (appleWrapperState) {
+    appleWrapperState.textContent = webSettings.appleWrapperEnvOverride
+      ? "已由环境变量 MUSIC_DL_APPLE_WRAPPER_URL 指定"
+      : "";
+  }
+  const appleAudioQualitySelect = document.getElementById(
+    "setting-apple-audio-quality",
+  );
+  if (appleAudioQualitySelect) {
+    appleAudioQualitySelect.value = webSettings.appleAudioQuality;
+  }
   bindWebDAVSettingEvents();
   syncWebDAVVisibility();
 
@@ -1046,6 +1084,10 @@ function buildDownloadRequestURL(
   if (options.saveLocal) {
     params.set("save_local", "1");
   }
+  const durationValue = parseInt(options.duration, 10);
+  if (durationValue > 0) {
+    params.set("duration", String(durationValue));
+  }
   if (options.stream) {
     params.set("stream", "1");
   }
@@ -1068,7 +1110,7 @@ function buildStreamURL(id, source, name, artist, album, cover, extra) {
   );
 }
 
-function buildDownloadURL(id, source, name, artist, album, cover, extra) {
+function buildDownloadURL(id, source, name, artist, album, cover, extra, duration = 0) {
   return buildDownloadRequestURL(
     id,
     source,
@@ -1080,6 +1122,7 @@ function buildDownloadURL(id, source, name, artist, album, cover, extra) {
     {
       embed: webSettings.embedDownload,
       saveLocal: true,
+      duration,
     },
   );
 }
@@ -1155,6 +1198,7 @@ function updateDownloadButton(link) {
     ds.album || "",
     ds.cover || "",
     ds.extra || "",
+    ds.duration,
   );
   link.title = "保存到本地目录";
 }
@@ -3897,7 +3941,10 @@ async function inspectSong(card, controller = null) {
           ? "tag tag-success tag-preview"
           : "tag tag-success";
         if (previewOnly) {
-          sizeTag.title = "Spotify 仅提供试听片段";
+          sizeTag.title =
+            source === "apple"
+              ? "未配置 wrapper，Apple Music 仅提供 30 秒试听"
+              : "Spotify 仅提供试听片段";
         } else {
           sizeTag.removeAttribute("title");
         }
@@ -5156,7 +5203,7 @@ function createDownloadRequestID() {
 async function enqueueDownloadURLs(urls) {
   const songs = urls.map(raw => {
     const params = new URL(raw, window.location.href).searchParams;
-    return Object.fromEntries(["id", "source", "name", "artist", "album", "cover", "extra"].map(key => [key, params.get(key) || ""]).concat([["embed", params.get("embed") === "1"]]));
+    return Object.fromEntries(["id", "source", "name", "artist", "album", "cover", "extra"].map(key => [key, params.get(key) || ""]).concat([["embed", params.get("embed") === "1"], ["duration", parseInt(params.get("duration"), 10) || 0]]));
   });
   const response = await fetch(`${API_ROOT}/api/downloads/queue`, {
     method: "POST",
@@ -5618,6 +5665,35 @@ async function pickDownloadFolder() {
 
 let openDownloadDirectoryInFlight = false;
 
+async function testAppleWrapper() {
+  const state = document.getElementById("setting-apple-wrapper-state");
+  if (!state) return;
+  state.textContent = "检测中…";
+  // 检测输入框里的地址（可能还没保存）；环境变量锁定时输入框禁用，由服务端用环境变量。
+  const input = document.getElementById("setting-apple-wrapper-url");
+  const query =
+    input && !input.disabled
+      ? `?url=${encodeURIComponent(input.value.trim())}`
+      : "";
+  try {
+    const response = await fetch(`${API_ROOT}/apple/wrapper/status${query}`, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    const ffmpeg = payload.ffmpeg ? "ffmpeg ✓" : "ffmpeg ✗";
+    if (response.ok && payload.ok) {
+      const regions = Array.isArray(payload.regions)
+        ? payload.regions.join(", ")
+        : "";
+      state.textContent = `已连接 · 区域 ${regions} · ${ffmpeg}`;
+    } else {
+      state.textContent = `${payload.error || `HTTP ${response.status}`} · ${ffmpeg}`;
+    }
+  } catch (error) {
+    state.textContent = String(error?.message || error);
+  }
+}
+
 async function openDownloadDirectory() {
   if (openDownloadDirectoryInFlight) return;
   openDownloadDirectoryInFlight = true;
@@ -5902,6 +5978,11 @@ async function saveCookies() {
         document.getElementById("setting-soda-signer-token")?.value || "",
       sodaClientDir:
         document.getElementById("setting-soda-client-dir")?.value || "",
+      appleWrapperUrl:
+        document.getElementById("setting-apple-wrapper-url")?.value || "",
+      appleAudioQuality:
+        document.getElementById("setting-apple-audio-quality")?.value ||
+        "alac",
       vgChangeCover: !!document.getElementById("setting-vg-change-cover")
         ?.checked,
       vgChangeAudio: !!document.getElementById("setting-vg-change-audio")
@@ -7478,6 +7559,7 @@ function syncPlayerTrackActions(player) {
       song.album,
       song.cover,
       serializeSongExtra(song.extra),
+      song.duration,
     );
     download.title = "下载当前歌曲";
     download.setAttribute("aria-label", "下载当前歌曲");
@@ -8506,6 +8588,7 @@ function updateCardWithSong(card, song, options = {}) {
       song.album || "",
       song.cover || "",
       card.dataset.extra || "",
+      song.duration,
     );
     dl.id = `dl-${song.id}`;
     dl.title = "保存到本地目录";
@@ -9060,6 +9143,7 @@ function getSelectedSongs() {
           song.album || "",
           song.cover || "",
           song.extra || "",
+          song.duration,
         ),
         cover: song.cover,
         lrc: lyricURLs.line,

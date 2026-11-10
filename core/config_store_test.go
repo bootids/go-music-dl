@@ -261,7 +261,8 @@ func TestWebSettingsDefaultAndPersist(t *testing.T) {
 		LyricFontFamily:          "pingfang",
 		LyricFontSize:            28,
 		// 未配置远程签名器时保持为空 = 使用本机签名器；空 Token 保存时保留已保存的值。
-		SodaSignerToken: "",
+		SodaSignerToken:   "",
+		AppleAudioQuality: "alac",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("saved settings mismatch\ngot:  %#v\nwant: %#v", got, want)
