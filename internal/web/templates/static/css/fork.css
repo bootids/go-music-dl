@@ -1,0 +1,132 @@
+/* fork.css：本 fork（bootids/go-music-dl）新增的样式，独立于上游 style.css，减少合并上游时的冲突。
+   在 index.html 中紧跟 style.css 之后加载。 */
+
+/* 设置页“文件整理” */
+.file-organize-template-label {
+    display: block;
+    margin-top: 13px;
+}
+.file-organize-preview-title {
+    color: var(--text-sub);
+    font-size: 12px;
+    font-weight: 600;
+}
+.file-organize-preview-list {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.file-organize-preview-list li {
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    min-width: 0;
+}
+.file-organize-preview-path {
+    display: block;
+    color: var(--text-main);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.file-organize-preview-path .preview-dir {
+    color: var(--text-sub);
+}
+.file-organize-preview-list .preview-segment {
+    display: inline-block;
+    max-width: 100%;
+    white-space: pre-wrap;
+}
+.file-organize-preview-tag {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-sub);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.file-organize-preview-list .file-organize-preview-empty {
+    color: var(--text-sub);
+    font-size: 12px;
+}
+
+/* 歌词检查 */
+/* 与“定时停止”弹窗同级，盖过右侧悬浮工具栏（z-index 10001）。 */
+#lyric-check-modal-overlay { z-index: 10020; }
+.lyric-check-modal { width: min(720px, 100%); display: flex; flex-direction: column; }
+.lyric-check-modal .lyric-check-body { overflow-y: auto; max-height: calc(min(680px, 100vh - 32px) - 70px); box-sizing: border-box; }
+.lyric-check-toolbar { flex-wrap: wrap; }
+.lyric-check-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.lyric-check-filter { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border: 1px solid #e2e8f0; border-radius: 999px; background: #fff; color: #475569; font-size: 12px; font-weight: 700; cursor: pointer; transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease; }
+.lyric-check-filter:hover { border-color: #a7f3d0; color: #047857; }
+.lyric-check-filter.is-active { border-color: #34d399; background: #ecfdf5; color: #047857; }
+.lyric-check-filter-count { min-width: 18px; padding: 0 5px; border-radius: 999px; background: #f1f5f9; color: #64748b; font-size: 11px; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.lyric-check-filter.is-active .lyric-check-filter-count { background: #d1fae5; color: #047857; }
+.lyric-check-rescan { min-height: 30px; padding: 5px 10px; border-color: #e2e8f0; background: #fff; color: #475569; font-size: 12px; }
+.lyric-check-rescan:hover { border-color: #a7f3d0; color: #047857; }
+.lyric-check-row, .lyric-candidate-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #edf2f7; transition: background-color 0.16s ease; }
+.lyric-check-row:last-child, .lyric-candidate-row:last-child { border-bottom: none; }
+.lyric-check-row:hover, .lyric-candidate-row:hover { background: #f8fafc; }
+.lyric-check-row-main, .lyric-candidate-main { min-width: 0; flex: 1; }
+.lyric-check-row-name, .lyric-candidate-name, .lyric-local-summary-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); font-size: 13px; font-weight: 800; }
+.lyric-check-row-meta, .lyric-candidate-meta, .lyric-local-summary-meta { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-sub); font-size: 12px; }
+.lyric-check-row-side, .lyric-candidate-side, .lyric-local-summary-side { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.lyric-check-row-duration, .lyric-candidate-duration, .lyric-local-summary-duration { color: #64748b; font-size: 12px; font-variant-numeric: tabular-nums; }
+.lyric-candidate-duration { min-width: 40px; text-align: right; }
+.lyric-check-row-action, .lyric-candidate-action { min-height: 30px; padding: 5px 10px; font-size: 12px; border-color: #a7f3d0; background: #ecfdf5; color: #047857; }
+.lyric-check-row-action:hover:not(:disabled), .lyric-candidate-action:hover:not(:disabled) { border-color: #34d399; background: #d1fae5; }
+.lyric-candidate-action.btn-pill-primary { border-color: #10b981; background: #10b981; color: #fff; }
+.lyric-candidate-action.btn-pill-primary:hover:not(:disabled) { background: #059669; }
+.lyric-check-row-action:disabled, .lyric-candidate-action:disabled { border-color: #e2e8f0; background: #f8fafc; color: #94a3b8; cursor: not-allowed; }
+.lyric-diff-badge { min-width: 84px; }
+.lyric-kind-badge, .lyric-diff-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 46px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; box-sizing: border-box; }
+.lyric-kind-badge.is-verbatim, .lyric-diff-badge.is-match { background: #ecfdf5; color: #047857; }
+.lyric-kind-badge.is-line, .lyric-diff-badge.is-mismatch { background: #fffbeb; color: #a16207; }
+.lyric-kind-badge.is-plain, .lyric-kind-badge.is-none, .lyric-diff-badge.is-unknown { background: #f1f5f9; color: #64748b; }
+.lyric-check-state { display: grid; place-items: center; gap: 8px; min-height: 140px; padding: 20px; color: var(--text-sub); font-size: 13px; text-align: center; }
+.lyric-check-state i { color: #94a3b8; font-size: 20px; }
+.lyric-check-state.is-clean i { color: #10b981; }
+.lyric-check-state.is-error { color: #be123c; }
+.lyric-check-state.is-error i { color: #be123c; }
+.lyric-check-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 10px; padding: 4px 8px 4px 0; border: none; background: none; color: #047857; font-size: 12px; font-weight: 700; cursor: pointer; }
+.lyric-check-back:hover { color: #065f46; }
+.lyric-local-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #d1fae5; border-radius: 12px; background: #f0fdf4; }
+.lyric-local-summary-main { min-width: 0; }
+.lyric-search-form { display: flex; gap: 8px; margin: 12px 0; }
+.lyric-search-input { flex: 1; min-width: 0; min-height: 34px; padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 13px; outline: none; box-sizing: border-box; }
+.lyric-search-input:focus { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15); }
+.lyric-search-form .btn-pill { min-height: 34px; padding: 6px 14px; font-size: 13px; }
+.lyric-candidate-list { max-height: min(300px, 38vh); }
+.lyric-candidate-row.is-selected { background: #f0fdf4; box-shadow: inset 3px 0 0 #10b981; }
+.lyric-candidate-row.is-selected .lyric-diff-badge.is-match { background: #d1fae5; }
+.lyric-candidate-main { padding: 0; border: none; background: none; text-align: left; cursor: pointer; font: inherit; }
+.lyric-candidate-main:hover .lyric-candidate-name { color: #047857; }
+.lyric-preview { margin-top: 12px; padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+.lyric-preview .lyric-check-state { min-height: 90px; }
+.lyric-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.lyric-preview-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); font-size: 13px; font-weight: 800; }
+.lyric-preview-lines { display: flex; flex-direction: column; gap: 0; max-height: 210px; overflow-y: auto; }
+.lyric-preview-line { color: var(--text-main); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.lyric-preview-line:not(.is-translation):not(:first-child) { margin-top: 8px; }
+.lyric-preview-line.is-translation { margin-top: 0; color: #64748b; font-size: 12px; }
+.lyric-preview-more { color: #94a3b8; font-size: 12px; }
+.lyric-preview-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #edf2f7; flex-wrap: wrap; }
+.lyric-preview-warning { flex: 1; min-width: 180px; color: #a16207; font-size: 12px; line-height: 1.45; }
+.lyric-preview-footer .btn-pill { min-height: 32px; padding: 6px 14px; font-size: 13px; }
+.lyric-force-button { border-color: #fcd34d; background: #fffbeb; color: #a16207; }
+.lyric-force-button:hover:not(:disabled) { border-color: #f59e0b; background: #fef3c7; }
+@media (max-width: 560px) {
+    .lyric-check-row, .lyric-candidate-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .lyric-check-row-side, .lyric-candidate-side { justify-content: space-between; }
+    .lyric-local-summary { flex-direction: column; align-items: flex-start; }
+}
+/* 这些规则原本写在 style.css 中间，移动端 .modal / .utility-modal-list 规则排在它们后面并覆盖了宽度和高度；
+   fork.css 在 style.css 之后加载，这里补回原来的覆盖结果，保持渲染不变。 */
+@media (max-width: 768px) {
+    .lyric-check-modal { width: 92%; }
+    .lyric-candidate-list { max-height: min(390px, 48vh); }
+}

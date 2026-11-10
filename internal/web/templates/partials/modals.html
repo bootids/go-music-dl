@@ -217,48 +217,7 @@
                     </div>
                     <p id="setting-download-dir-hint" class="setting-hint" style="margin-left: 0;">选择预设会自动填入路径，也可以手填相对目录或绝对目录。Docker 部署推荐 <code>/home/appuser/data</code>。</p>
                 </div>
-                <div class="cookie-item setting-item file-organize-settings">
-                    <div class="settings-section-heading">
-                        <span class="settings-section-icon"><i class="fa-solid fa-folder-tree"></i></span>
-                        <span>
-                            <strong>文件整理</strong>
-                            <small>决定保存到本地目录和 WebDAV 的文件名、目录和专辑标签</small>
-                        </span>
-                    </div>
-                    <label for="setting-download-filename-template" class="file-organize-template-label">音乐文件名模板</label>
-                    <input type="text" id="setting-download-filename-template" placeholder="{artist} - {name}">
-                    <p class="setting-hint" style="margin-left: 0;">支持 <code>{name}</code>、<code>{artist}</code>、<code>{album}</code>、<code>{source}</code>、<code>{id}</code>、<code>{ext}</code>。未写 <code>{ext}</code> 时会自动追加扩展名；可用 <code>/</code> 创建子目录。</p>
-                </div>
-                <div class="cookie-item setting-item">
-                    <label class="setting-toggle" for="setting-organize-by-artist-album">
-                        <input type="checkbox" id="setting-organize-by-artist-album">
-                        <span class="setting-switch" aria-hidden="true"></span>
-                        <span class="setting-toggle-text">按 歌手/专辑 分目录保存</span>
-                    </label>
-                    <p class="setting-hint">文件放在 <code>歌手/专辑/</code> 下，无专辑时放在歌手目录；模板里已写 <code>/</code> 子目录时以模板为准。浏览器下载只取文件名。</p>
-                </div>
-                <div class="cookie-item setting-item">
-                    <label class="setting-toggle" for="setting-clean-album-episode">
-                        <input type="checkbox" id="setting-clean-album-episode">
-                        <span class="setting-switch" aria-hidden="true"></span>
-                        <span class="setting-toggle-text">整理专辑名（去掉综艺期数）</span>
-                    </label>
-                    <p class="setting-hint">如 <code>声生不息·家年华 (第九期 live)</code> → <code>声生不息·家年华</code>，同时作用于专辑目录、<code>{album}</code> 和文件内的专辑标签。<code>(Live)</code>、<code>(Deluxe)</code> 等版本说明保留。</p>
-                </div>
-                <div class="cookie-item setting-item">
-                    <label class="setting-toggle" for="setting-normalize-chinese-variants">
-                        <input type="checkbox" id="setting-normalize-chinese-variants">
-                        <span class="setting-switch" aria-hidden="true"></span>
-                        <span class="setting-toggle-text">下载文件名统一为简体中文</span>
-                    </label>
-                    <p class="setting-hint">会清理歌名、歌手和专辑中的零宽字符，并把繁体转为简体。下载去重始终做该归一化，避免“久石让 / 久石讓”重复下载。</p>
-                </div>
-                <div class="cookie-item setting-item file-organize-preview" aria-live="polite">
-                    <div class="file-organize-preview-title">保存预览</div>
-                    <ul id="setting-filename-preview" class="file-organize-preview-list">
-                        <li class="file-organize-preview-empty">打开设置后自动生成</li>
-                    </ul>
-                </div>
+                {{template "fork_file_organize_settings" .}}
                 <div class="cookie-item">
                     <label for="setting-download-tip-duration">下载提示显示时长</label>
                     <select id="setting-download-tip-duration" aria-label="下载提示显示时长">
@@ -404,23 +363,7 @@
                     <label for="setting-soda-signer-token">签名服务 Token</label>
                     <input type="password" id="setting-soda-signer-token" placeholder="留空则保留已保存的 Token" autocomplete="new-password">
                 </div>
-                <div class="settings-panel-subtitle">Apple Music 完整下载（wrapper-lite）</div>
-                <p class="settings-panel-hint">wrapper 无鉴权，请勿暴露公网；播放仍为 30 秒试听</p>
-                <div class="cookie-item">
-                    <label for="setting-apple-wrapper-url">wrapper-lite 地址</label>
-                    <div class="cookie-input-row">
-                        <input type="url" id="setting-apple-wrapper-url" placeholder="http://127.0.0.1:12340" autocomplete="off" spellcheck="false">
-                        <button type="button" id="apple-wrapper-test" class="cookie-qr-btn" onclick="testAppleWrapper()">检测</button>
-                    </div>
-                    <p class="setting-hint" id="setting-apple-wrapper-state" style="margin-left: 0;"></p>
-                </div>
-                <div class="cookie-item">
-                    <label for="setting-apple-audio-quality">下载音质</label>
-                    <select id="setting-apple-audio-quality">
-                        <option value="alac">ALAC 无损（≤192kHz）</option>
-                        <option value="aac">AAC 256</option>
-                    </select>
-                </div>
+                {{template "fork_apple_settings" .}}
             </section>
 
             <div class="settings-save-bar">

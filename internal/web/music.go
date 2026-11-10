@@ -560,15 +560,10 @@ func inspectFailurePayload(retryable bool, reason string, retryAfter time.Durati
 }
 
 func inspectSuccessPayload(source, urlStr, size, bitrate string) gin.H {
-	src := strings.TrimSpace(source)
-	appleFull := strings.EqualFold(src, "apple") && core.AppleWrapperConfigured()
-	previewOnly := strings.EqualFold(src, "spotify") || (strings.EqualFold(src, "apple") && !appleFull)
+	previewOnly := strings.EqualFold(strings.TrimSpace(source), "spotify")
+	previewOnly, size, bitrate = adjustAppleInspectPayload(source, previewOnly, size, bitrate)
 	if previewOnly {
 		bitrate = "-"
-	}
-	if appleFull {
-		// 探测的是 30 秒试听，大小和码率都不代表 wrapper 下载的整曲。
-		size, bitrate = "-", "-"
 	}
 	return gin.H{
 		"valid":        true,
@@ -1222,10 +1217,7 @@ func RegisterMusicRoutes(api, configAPI *gin.RouterGroup) {
 
 		settings := core.GetWebSettings()
 		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist, Album: album, Cover: coverURL, Extra: extra}
-		// 时长用于识别配置 wrapper 前存下的 Apple 30 秒试听，缺失时按 0（未知）处理。
-		if d, err := strconv.Atoi(c.Query("duration")); err == nil && d > 0 {
-			tempSong.Duration = d
-		}
+		tempSong.Duration = downloadQueryDuration(c)
 
 		if saveLocal {
 			// 加载 SQLite 去重集合。
@@ -1294,21 +1286,7 @@ func RegisterMusicRoutes(api, configAPI *gin.RouterGroup) {
 			return
 		}
 
-		if source == "apple" && !streamPlayback && core.AppleWrapperConfigured() {
-			// 浏览器中止下载时随请求一起取消，不再继续拉取和解密整曲。
-			result, err := core.DownloadSongDataWithTemplateContext(c.Request.Context(), tempSong, false, false, settings.DownloadFilenameTemplate)
-			if err != nil {
-				c.String(502, "Apple full download error: "+err.Error())
-				return
-			}
-			if core.WebDAVConfigured(settings) {
-				if err := core.UploadSongToWebDAV(settings, result.Filename, result.Data); err != nil {
-					c.Header("X-MusicDL-Warning", err.Error())
-				}
-			}
-			// 不支持 Range：每次请求都要完整下载并解密，分段续传只会成倍重复下载。
-			setDownloadHeader(c, result.Filename)
-			c.Data(200, result.ContentType, result.Data)
+		if serveAppleWrapperDownload(c, tempSong, settings, streamPlayback) {
 			return
 		}
 

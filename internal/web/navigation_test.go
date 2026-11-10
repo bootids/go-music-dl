@@ -432,9 +432,14 @@ func TestSettingsModalIncludesDownloadDirPresets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile(modals.html): %v", err)
 	}
+	forkContent, err := templateFS.ReadFile("templates/partials/fork.html")
+	if err != nil {
+		t.Fatalf("ReadFile(fork.html): %v", err)
+	}
 
-	html := string(content)
+	html := string(content) + string(forkContent)
 	for _, want := range []string{
+		`{{template "fork_file_organize_settings" .}}`,
 		`id="setting-download-dir-preset"`,
 		`id="setting-download-lyrics-to-local"`,
 		`id="setting-download-filename-template"`,

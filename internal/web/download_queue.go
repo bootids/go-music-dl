@@ -11,15 +11,16 @@ import (
 )
 
 type queueSongRequest struct {
-	ID       string `json:"id"`
-	Source   string `json:"source"`
-	Name     string `json:"name"`
-	Artist   string `json:"artist"`
-	Album    string `json:"album"`
-	Cover    string `json:"cover"`
-	Extra    string `json:"extra"`
-	Embed    bool   `json:"embed"`
-	Duration int    `json:"duration"`
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	Name   string `json:"name"`
+	Artist string `json:"artist"`
+	Album  string `json:"album"`
+	Cover  string `json:"cover"`
+	Extra  string `json:"extra"`
+	Embed  bool   `json:"embed"`
+
+	Duration int `json:"duration"`
 }
 
 func RegisterDownloadQueueRoutes(api *gin.RouterGroup, queue *core.DownloadQueue) {

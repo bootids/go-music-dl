@@ -206,28 +206,6 @@ func saveDownloadedSongToFileWithLyricSidecar(result *DownloadedSong, outDir str
 	return result, nil
 }
 
-// artistAlbumDirPrefix 是“按歌手/专辑分目录”开启时加在文件名模板前的目录。
-// 专辑为空时该层目录会被 sanitizeDownloadRelativePath 跳过，文件直接放在歌手目录下。
-const artistAlbumDirPrefix = "{artist}/{album}/"
-
-// DownloadFilenameOptions 是影响下载文件名的设置项，便于在保存前预览未生效的设置。
-type DownloadFilenameOptions struct {
-	Template                 string
-	OrganizeByArtistAlbum    bool
-	CleanAlbumEpisode        bool
-	NormalizeChineseVariants bool
-}
-
-// DownloadFilenameOptionsFromSettings 取当前设置里与文件名相关的部分。
-func DownloadFilenameOptionsFromSettings(settings WebSettings, filenameTemplate string) DownloadFilenameOptions {
-	return DownloadFilenameOptions{
-		Template:                 filenameTemplate,
-		OrganizeByArtistAlbum:    settings.OrganizeByArtistAlbum,
-		CleanAlbumEpisode:        settings.CleanAlbumEpisode,
-		NormalizeChineseVariants: settings.NormalizeChineseVariants,
-	}
-}
-
 func BuildDownloadFilename(song *model.Song, ext string, filenameTemplate string) string {
 	return BuildDownloadFilenameWithOptions(song, ext, DownloadFilenameOptionsFromSettings(GetWebSettings(), filenameTemplate))
 }
@@ -375,12 +353,8 @@ func fetchMiguAudio(info *migu.DownloadInfo) ([]byte, error) {
 }
 
 func fetchSongAudio(ctx context.Context, song *model.Song) ([]byte, string, error) {
-	if song.Source == "apple" && AppleWrapperConfigured() {
-		data, err := FetchFullAppleAudioContext(ctx, song)
-		if err != nil {
-			return nil, "", err
-		}
-		return data, "audio/mp4", nil
+	if data, contentType, handled, err := fetchAppleWrapperAudio(ctx, song); handled {
+		return data, contentType, err
 	}
 	if song.Source == "soda" {
 		finalData, err := FetchDecryptedSodaAudio(song)

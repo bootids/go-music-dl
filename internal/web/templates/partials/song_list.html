@@ -293,10 +293,7 @@
                         </span>
                         {{ end }}
 
-                        <button type="button" class="btn-circle btn-dl btn-lyric-verbatim" title="找逐字歌词"
-                                onclick="openLyricUpgradeFromButton(this)">
-                            <i class="fa-solid fa-microphone-lines"></i>
-                        </button>
+                        {{template "fork_lyric_verbatim_button"}}
                         <button type="button" class="btn-circle btn-delete-local" title="删除本地音乐"
                                 onclick="deleteLocalMusicFromButton(this)">
                             <i class="fa-solid fa-trash"></i>
@@ -375,10 +372,7 @@
                         {{ end }}
 
                         {{ if and $isLocalSong (eq $.ColID "") }}
-                        <button type="button" class="btn-circle btn-dl btn-lyric-verbatim" title="找逐字歌词"
-                                onclick="openLyricUpgradeFromButton(this)">
-                            <i class="fa-solid fa-microphone-lines"></i>
-                        </button>
+                        {{template "fork_lyric_verbatim_button"}}
                         <button type="button" class="btn-circle btn-delete-local" title="删除本地音乐"
                                 onclick="deleteLocalMusicFromButton(this)">
                             <i class="fa-solid fa-trash"></i>
