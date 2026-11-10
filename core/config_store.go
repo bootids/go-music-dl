@@ -53,6 +53,7 @@ type WebSettings struct {
 	DownloadLyricsToLocal    bool   `json:"downloadLyricsToLocal"`
 	DownloadDir              string `json:"downloadDir"`
 	DownloadFilenameTemplate string `json:"downloadFilenameTemplate"`
+	OrganizeByArtistAlbum    bool   `json:"organizeByArtistAlbum"`
 	DownloadTipDuration      int    `json:"downloadTipDuration"`
 	WebDAVEnabled            bool   `json:"webdavEnabled"`
 	WebDAVURL                string `json:"webdavUrl"`

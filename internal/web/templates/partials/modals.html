@@ -222,6 +222,14 @@
                     <input type="text" id="setting-download-filename-template" placeholder="{artist} - {name}">
                     <p class="setting-hint" style="margin-left: 0;">支持 <code>{name}</code>、<code>{artist}</code>、<code>{album}</code>、<code>{source}</code>、<code>{id}</code>、<code>{ext}</code>。未写 <code>{ext}</code> 时会自动追加扩展名；可用 <code>/</code> 或 <code>\</code> 创建相对子目录，例如 <code>{artist}/{album}/{name} - {artist}.{ext}</code>。</p>
                 </div>
+                <div class="cookie-item setting-item">
+                    <label class="setting-toggle" for="setting-organize-by-artist-album">
+                        <input type="checkbox" id="setting-organize-by-artist-album">
+                        <span class="setting-switch" aria-hidden="true"></span>
+                        <span class="setting-toggle-text">按 歌手/专辑 分目录保存</span>
+                    </label>
+                    <p class="setting-hint">开启后保存到本地目录和 WebDAV 的文件放在 <code>歌手/专辑/</code> 子目录下（无专辑时放在歌手目录）；文件名模板里已写了 <code>/</code> 子目录时以模板为准。浏览器下载只取文件名。</p>
+                </div>
                 <div class="cookie-item">
                     <label for="setting-download-tip-duration">下载提示显示时长</label>
                     <select id="setting-download-tip-duration" aria-label="下载提示显示时长">

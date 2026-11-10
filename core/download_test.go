@@ -127,3 +127,67 @@ func TestLiveMiguHighestQualityDownload(t *testing.T) {
 		t.Fatalf("downloaded data is not a supported audio stream")
 	}
 }
+
+func TestBuildDownloadFilenameOrganizesByArtistAlbum(t *testing.T) {
+	baseDir := t.TempDir()
+	t.Setenv("MUSIC_DL_CONFIG_DB", filepath.Join(baseDir, "settings.db"))
+	resetConfigStateForTest()
+	t.Cleanup(resetConfigStateForTest)
+
+	if err := SaveWebSettings(WebSettings{OrganizeByArtistAlbum: true}); err != nil {
+		t.Fatalf("SaveWebSettings: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		song     *model.Song
+		template string
+		want     string
+	}{
+		{
+			name:     "artist and album",
+			song:     &model.Song{Name: "晴天", Artist: "周杰伦", Album: "叶惠美"},
+			template: "{artist} - {name}",
+			want:     filepath.Join("周杰伦", "叶惠美", "周杰伦 - 晴天.mp3"),
+		},
+		{
+			name:     "empty album falls back to artist dir",
+			song:     &model.Song{Name: "晴天", Artist: "周杰伦"},
+			template: "{artist} - {name}",
+			want:     filepath.Join("周杰伦", "周杰伦 - 晴天.mp3"),
+		},
+		{
+			name:     "default template when empty",
+			song:     &model.Song{Name: "晴天", Artist: "周杰伦", Album: "叶惠美"},
+			template: "",
+			want:     filepath.Join("周杰伦", "叶惠美", "周杰伦 - 晴天.mp3"),
+		},
+		{
+			name:     "template with own subdirectory wins",
+			song:     &model.Song{Name: "晴天", Artist: "周杰伦", Album: "叶惠美"},
+			template: "{album}/{name}",
+			want:     filepath.Join("叶惠美", "晴天.mp3"),
+		},
+		{
+			name:     "slash in artist does not create extra levels",
+			song:     &model.Song{Name: "Song", Artist: "A/B", Album: "X"},
+			template: "{name}",
+			want:     filepath.Join(sanitizeDownloadTemplateValue("A/B", "Unknown"), "X", "Song.mp3"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := BuildDownloadFilename(tt.song, "mp3", tt.template); got != tt.want {
+				t.Fatalf("BuildDownloadFilename() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	if err := SaveWebSettings(WebSettings{}); err != nil {
+		t.Fatalf("SaveWebSettings: %v", err)
+	}
+	song := &model.Song{Name: "晴天", Artist: "周杰伦", Album: "叶惠美"}
+	if got, want := BuildDownloadFilename(song, "mp3", "{artist} - {name}"), "周杰伦 - 晴天.mp3"; got != want {
+		t.Fatalf("toggle off: BuildDownloadFilename() = %q, want %q", got, want)
+	}
+}

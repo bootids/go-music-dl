@@ -202,12 +202,21 @@ func saveDownloadedSongToFileWithLyricSidecar(result *DownloadedSong, outDir str
 	return result, nil
 }
 
+// artistAlbumDirPrefix 是“按歌手/专辑分目录”开启时加在文件名模板前的目录。
+// 专辑为空时该层目录会被 sanitizeDownloadRelativePath 跳过，文件直接放在歌手目录下。
+const artistAlbumDirPrefix = "{artist}/{album}/"
+
 func BuildDownloadFilename(song *model.Song, ext string, filenameTemplate string) string {
 	template := strings.TrimSpace(filenameTemplate)
 	if template == "" {
 		template = DefaultDownloadFilenameTemplate
 	}
 	ext = strings.TrimSpace(strings.TrimPrefix(ext, "."))
+	settings := GetWebSettings()
+	// 模板自己已经写了子目录时以模板为准，避免叠出两层歌手/专辑目录。
+	if settings.OrganizeByArtistAlbum && !strings.ContainsAny(template, "/\\") {
+		template = artistAlbumDirPrefix + template
+	}
 
 	name := "Unknown"
 	artist := "Unknown"
@@ -215,7 +224,7 @@ func BuildDownloadFilename(song *model.Song, ext string, filenameTemplate string
 	source := ""
 	id := ""
 	if song != nil {
-		if GetWebSettings().NormalizeChineseVariants {
+		if settings.NormalizeChineseVariants {
 			song = NormalizeSongForDownload(song)
 		}
 		if strings.TrimSpace(song.Name) != "" {

@@ -64,6 +64,7 @@ let webSettings = {
   downloadToLocal: true,
   downloadDir: "data/downloads",
   downloadFilenameTemplate: "{name} - {artist}",
+  organizeByArtistAlbum: false,
   downloadTipDuration: DEFAULT_DOWNLOAD_TIP_DURATION,
   webdavEnabled: false,
   webdavUrl: "",
@@ -109,6 +110,7 @@ function normalizeWebSettings(raw) {
     downloadToLocal: true,
     downloadDir: "data/downloads",
     downloadFilenameTemplate: "{name} - {artist}",
+    organizeByArtistAlbum: false,
     downloadTipDuration: DEFAULT_DOWNLOAD_TIP_DURATION,
     webdavEnabled: false,
     webdavUrl: "",
@@ -165,6 +167,9 @@ function normalizeWebSettings(raw) {
     raw.downloadFilenameTemplate.trim() !== ""
   ) {
     next.downloadFilenameTemplate = raw.downloadFilenameTemplate.trim();
+  }
+  if (typeof raw.organizeByArtistAlbum === "boolean") {
+    next.organizeByArtistAlbum = raw.organizeByArtistAlbum;
   }
   if (
     Number.isInteger(raw.downloadTipDuration) &&
@@ -865,6 +870,12 @@ function applyWebSettings(settings) {
   );
   if (filenameTemplateInput) {
     filenameTemplateInput.value = webSettings.downloadFilenameTemplate;
+  }
+  const organizeToggle = document.getElementById(
+    "setting-organize-by-artist-album",
+  );
+  if (organizeToggle) {
+    organizeToggle.checked = webSettings.organizeByArtistAlbum;
   }
 
   const downloadTipDurationInput = document.getElementById(
@@ -5928,6 +5939,9 @@ async function saveCookies() {
       downloadFilenameTemplate:
         document.getElementById("setting-download-filename-template")?.value ||
         "",
+      organizeByArtistAlbum: !!document.getElementById(
+        "setting-organize-by-artist-album",
+      )?.checked,
       downloadTipDuration: parsePositiveInt(
         document.getElementById("setting-download-tip-duration")?.value,
         DEFAULT_DOWNLOAD_TIP_DURATION,
