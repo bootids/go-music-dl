@@ -52,6 +52,10 @@ func downloadSongDataWithTemplate(ctx context.Context, song *model.Song, withCov
 	normalized.Name = strings.TrimSpace(normalized.Name)
 	normalized.Artist = strings.TrimSpace(normalized.Artist)
 	normalized.Album = strings.TrimSpace(normalized.Album)
+	if GetWebSettings().CleanAlbumEpisode {
+		// 写入文件的专辑标签与目录、文件名用同一个整理后的专辑名。
+		normalized.Album = CleanAlbumEpisode(normalized.Album)
+	}
 	if normalized.Name == "" {
 		normalized.Name = "Unknown"
 	}
@@ -206,15 +210,36 @@ func saveDownloadedSongToFileWithLyricSidecar(result *DownloadedSong, outDir str
 // 专辑为空时该层目录会被 sanitizeDownloadRelativePath 跳过，文件直接放在歌手目录下。
 const artistAlbumDirPrefix = "{artist}/{album}/"
 
+// DownloadFilenameOptions 是影响下载文件名的设置项，便于在保存前预览未生效的设置。
+type DownloadFilenameOptions struct {
+	Template                 string
+	OrganizeByArtistAlbum    bool
+	CleanAlbumEpisode        bool
+	NormalizeChineseVariants bool
+}
+
+// DownloadFilenameOptionsFromSettings 取当前设置里与文件名相关的部分。
+func DownloadFilenameOptionsFromSettings(settings WebSettings, filenameTemplate string) DownloadFilenameOptions {
+	return DownloadFilenameOptions{
+		Template:                 filenameTemplate,
+		OrganizeByArtistAlbum:    settings.OrganizeByArtistAlbum,
+		CleanAlbumEpisode:        settings.CleanAlbumEpisode,
+		NormalizeChineseVariants: settings.NormalizeChineseVariants,
+	}
+}
+
 func BuildDownloadFilename(song *model.Song, ext string, filenameTemplate string) string {
-	template := strings.TrimSpace(filenameTemplate)
+	return BuildDownloadFilenameWithOptions(song, ext, DownloadFilenameOptionsFromSettings(GetWebSettings(), filenameTemplate))
+}
+
+func BuildDownloadFilenameWithOptions(song *model.Song, ext string, opts DownloadFilenameOptions) string {
+	template := strings.TrimSpace(opts.Template)
 	if template == "" {
 		template = DefaultDownloadFilenameTemplate
 	}
 	ext = strings.TrimSpace(strings.TrimPrefix(ext, "."))
-	settings := GetWebSettings()
 	// 模板自己已经写了子目录时以模板为准，避免叠出两层歌手/专辑目录。
-	if settings.OrganizeByArtistAlbum && !strings.ContainsAny(template, "/\\") {
+	if opts.OrganizeByArtistAlbum && !strings.ContainsAny(template, "/\\") {
 		template = artistAlbumDirPrefix + template
 	}
 
@@ -224,7 +249,7 @@ func BuildDownloadFilename(song *model.Song, ext string, filenameTemplate string
 	source := ""
 	id := ""
 	if song != nil {
-		if settings.NormalizeChineseVariants {
+		if opts.NormalizeChineseVariants {
 			song = NormalizeSongForDownload(song)
 		}
 		if strings.TrimSpace(song.Name) != "" {
@@ -234,6 +259,9 @@ func BuildDownloadFilename(song *model.Song, ext string, filenameTemplate string
 			artist = strings.TrimSpace(song.Artist)
 		}
 		album = strings.TrimSpace(song.Album)
+		if opts.CleanAlbumEpisode {
+			album = CleanAlbumEpisode(album)
+		}
 		source = strings.TrimSpace(song.Source)
 		id = strings.TrimSpace(song.ID)
 	}

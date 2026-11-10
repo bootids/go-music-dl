@@ -65,6 +65,7 @@ let webSettings = {
   downloadDir: "data/downloads",
   downloadFilenameTemplate: "{name} - {artist}",
   organizeByArtistAlbum: false,
+  cleanAlbumEpisode: false,
   downloadTipDuration: DEFAULT_DOWNLOAD_TIP_DURATION,
   webdavEnabled: false,
   webdavUrl: "",
@@ -111,6 +112,7 @@ function normalizeWebSettings(raw) {
     downloadDir: "data/downloads",
     downloadFilenameTemplate: "{name} - {artist}",
     organizeByArtistAlbum: false,
+    cleanAlbumEpisode: false,
     downloadTipDuration: DEFAULT_DOWNLOAD_TIP_DURATION,
     webdavEnabled: false,
     webdavUrl: "",
@@ -170,6 +172,9 @@ function normalizeWebSettings(raw) {
   }
   if (typeof raw.organizeByArtistAlbum === "boolean") {
     next.organizeByArtistAlbum = raw.organizeByArtistAlbum;
+  }
+  if (typeof raw.cleanAlbumEpisode === "boolean") {
+    next.cleanAlbumEpisode = raw.cleanAlbumEpisode;
   }
   if (
     Number.isInteger(raw.downloadTipDuration) &&
@@ -470,6 +475,107 @@ function syncDownloadDirPresetFromInput() {
   presetSelect.value = DOWNLOAD_DIR_PRESETS.has(normalizedValue)
     ? normalizedValue
     : DOWNLOAD_DIR_CUSTOM_VALUE;
+}
+
+// “文件整理”预览：按表单里尚未保存的模板和开关，请求服务端生成示例保存路径。
+const FILE_ORGANIZE_PREVIEW_INPUTS = [
+  "setting-download-filename-template",
+  "setting-organize-by-artist-album",
+  "setting-clean-album-episode",
+  "setting-normalize-chinese-variants",
+];
+let filenamePreviewTimer = null;
+let filenamePreviewSeq = 0;
+
+function bindFileOrganizePreviewEvents() {
+  FILE_ORGANIZE_PREVIEW_INPUTS.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.previewBound === "1") return;
+    el.dataset.previewBound = "1";
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", () => {
+      clearTimeout(filenamePreviewTimer);
+      filenamePreviewTimer = setTimeout(refreshFilenamePreview, 250);
+    });
+  });
+}
+
+function renderFilenamePreviewMessage(list, text) {
+  const item = document.createElement("li");
+  item.className = "file-organize-preview-empty";
+  item.textContent = text;
+  list.replaceChildren(item);
+}
+
+async function refreshFilenamePreview() {
+  const list = document.getElementById("setting-filename-preview");
+  if (!list) return;
+  const checked = (id) => (document.getElementById(id)?.checked ? "1" : "0");
+  const params = new URLSearchParams({
+    template:
+      document.getElementById("setting-download-filename-template")?.value ||
+      "",
+    organizeByArtistAlbum: checked("setting-organize-by-artist-album"),
+    cleanAlbumEpisode: checked("setting-clean-album-episode"),
+    normalizeChineseVariants: checked("setting-normalize-chinese-variants"),
+  });
+  const seq = ++filenamePreviewSeq;
+  try {
+    const response = await fetch(
+      `${API_ROOT}/download/filename_preview?${params}`,
+      { headers: { "X-Requested-With": "XMLHttpRequest" } },
+    );
+    if (seq !== filenamePreviewSeq) return;
+    if (!response.ok) {
+      renderFilenamePreviewMessage(
+        list,
+        response.status === 401 ? "登录后可预览" : `预览失败（HTTP ${response.status}）`,
+      );
+      return;
+    }
+    const payload = await response.json();
+    if (seq !== filenamePreviewSeq) return;
+    const examples = Array.isArray(payload.examples) ? payload.examples : [];
+    if (!examples.length) {
+      renderFilenamePreviewMessage(list, "暂无预览");
+      return;
+    }
+    list.replaceChildren(
+      ...examples.map((example) => {
+        const item = document.createElement("li");
+        const pathEl = document.createElement("span");
+        pathEl.className = "file-organize-preview-path";
+        // 每段目录/文件名整体换行，优先在 “/” 处断开，不把名字拆成两行。
+        const segments = String(example.path || "").split("/");
+        segments.forEach((segment, index) => {
+          const isDir = index < segments.length - 1;
+          const part = document.createElement("span");
+          part.className = isDir
+            ? "preview-segment preview-dir"
+            : "preview-segment";
+          part.textContent = isDir ? `${segment}/` : segment;
+          pathEl.append(part);
+        });
+        item.append(pathEl);
+        if (example.albumTag && example.albumTag !== example.album) {
+          const tag = document.createElement("span");
+          tag.className = "file-organize-preview-tag";
+          ["专辑标签：", example.album, " → ", example.albumTag].forEach(
+            (text) => {
+              const part = document.createElement("span");
+              part.className = "preview-segment";
+              part.textContent = text;
+              tag.append(part);
+            },
+          );
+          item.append(tag);
+        }
+        return item;
+      }),
+    );
+  } catch (error) {
+    if (seq !== filenamePreviewSeq) return;
+    renderFilenamePreviewMessage(list, "预览失败");
+  }
 }
 
 function bindDownloadDirPresetEvents() {
@@ -877,6 +983,12 @@ function applyWebSettings(settings) {
   if (organizeToggle) {
     organizeToggle.checked = webSettings.organizeByArtistAlbum;
   }
+  const cleanAlbumToggle = document.getElementById(
+    "setting-clean-album-episode",
+  );
+  if (cleanAlbumToggle) {
+    cleanAlbumToggle.checked = webSettings.cleanAlbumEpisode;
+  }
 
   const downloadTipDurationInput = document.getElementById(
     "setting-download-tip-duration",
@@ -951,6 +1063,8 @@ function applyWebSettings(settings) {
       webSettings.normalizeChineseVariants;
   }
   bindSearchFilterSettingEvents();
+  bindFileOrganizePreviewEvents();
+  refreshFilenamePreview();
 
   const vgChangeCoverToggle = document.getElementById(
     "setting-vg-change-cover",
@@ -5941,6 +6055,9 @@ async function saveCookies() {
         "",
       organizeByArtistAlbum: !!document.getElementById(
         "setting-organize-by-artist-album",
+      )?.checked,
+      cleanAlbumEpisode: !!document.getElementById(
+        "setting-clean-album-episode",
       )?.checked,
       downloadTipDuration: parsePositiveInt(
         document.getElementById("setting-download-tip-duration")?.value,

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -153,6 +154,38 @@ func requestAuthenticated(c *gin.Context) bool {
 
 // appleWrapperStatusHandler 检测 wrapper-lite 是否可达并已登录，同时报告 ffmpeg 是否可用。
 // 带 url 参数时检测该地址（设置页里尚未保存的输入）；环境变量指定地址时忽略它。
+// downloadFilenamePreviewSamples 是设置页“文件整理”预览用的示例歌曲：
+// 一首普通专辑，一首带综艺期数的专辑。
+var downloadFilenamePreviewSamples = []struct {
+	song model.Song
+	ext  string
+}{
+	{song: model.Song{ID: "preview-1", Source: "qq", Name: "晴天", Artist: "周杰伦", Album: "叶惠美"}, ext: "flac"},
+	{song: model.Song{ID: "preview-2", Source: "apple", Name: "示例歌曲", Artist: "示例歌手", Album: "声生不息·家年华 (第九期 live)"}, ext: "m4a"},
+}
+
+// downloadFilenamePreviewHandler 按页面上尚未保存的模板和开关生成示例保存路径，
+// 与真实下载共用 BuildDownloadFilenameWithOptions，预览与实际结果一致。
+func downloadFilenamePreviewHandler(c *gin.Context) {
+	opts := core.DownloadFilenameOptions{
+		Template:                 c.Query("template"),
+		OrganizeByArtistAlbum:    c.Query("organizeByArtistAlbum") == "1",
+		CleanAlbumEpisode:        c.Query("cleanAlbumEpisode") == "1",
+		NormalizeChineseVariants: c.Query("normalizeChineseVariants") == "1",
+	}
+	examples := make([]gin.H, 0, len(downloadFilenamePreviewSamples))
+	for _, sample := range downloadFilenamePreviewSamples {
+		song := sample.song
+		path := filepath.ToSlash(core.BuildDownloadFilenameWithOptions(&song, sample.ext, opts))
+		album := song.Album
+		if opts.CleanAlbumEpisode {
+			album = core.CleanAlbumEpisode(album)
+		}
+		examples = append(examples, gin.H{"album": song.Album, "albumTag": album, "path": path})
+	}
+	c.JSON(http.StatusOK, gin.H{"examples": examples})
+}
+
 func appleWrapperStatusHandler(c *gin.Context) {
 	_, ffmpegErr := core.ResolveFFmpegPath()
 	ffmpegOK := ffmpegErr == nil
@@ -716,6 +749,7 @@ func StartWithOptions(port string, opts StartOptions) {
 	})
 	configAPI.POST("/open_download_dir", openDownloadDirectoryHandler)
 	configAPI.GET("/apple/wrapper/status", appleWrapperStatusHandler)
+	configAPI.GET("/download/filename_preview", downloadFilenamePreviewHandler)
 
 	RegisterMusicRoutes(api, configAPI)
 	RegisterQRLoginRoutes(configAPI)

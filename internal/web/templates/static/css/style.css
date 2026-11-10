@@ -1718,6 +1718,57 @@ body.vg-open .aplayer.aplayer-fixed {
     background: #ecfdf5;
     color: #059669;
 }
+.file-organize-template-label {
+    display: block;
+    margin-top: 13px;
+}
+.file-organize-preview-title {
+    color: var(--text-sub);
+    font-size: 12px;
+    font-weight: 600;
+}
+.file-organize-preview-list {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.file-organize-preview-list li {
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    min-width: 0;
+}
+.file-organize-preview-path {
+    display: block;
+    color: var(--text-main);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.file-organize-preview-path .preview-dir {
+    color: var(--text-sub);
+}
+.file-organize-preview-list .preview-segment {
+    display: inline-block;
+    max-width: 100%;
+    white-space: pre-wrap;
+}
+.file-organize-preview-tag {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-sub);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.file-organize-preview-list .file-organize-preview-empty {
+    color: var(--text-sub);
+    font-size: 12px;
+}
 .lyric-appearance-controls {
     display: grid;
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);

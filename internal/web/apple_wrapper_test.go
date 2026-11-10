@@ -176,3 +176,43 @@ func TestAppleWrapperStatusURLRequiresSameOrigin(t *testing.T) {
 		t.Fatalf("status code = %d, want 403", w.Code)
 	}
 }
+
+func TestDownloadFilenamePreview(t *testing.T) {
+	useTempAppleConfig(t, "")
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/download/filename_preview", downloadFilenamePreviewHandler)
+	get := func(query string) []map[string]any {
+		t.Helper()
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/download/filename_preview?"+query, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+		}
+		var payload struct {
+			Examples []map[string]any `json:"examples"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if len(payload.Examples) != 2 {
+			t.Fatalf("examples = %v", payload.Examples)
+		}
+		return payload.Examples
+	}
+
+	ex := get("template=" + url.QueryEscape("{artist} - {name}"))
+	if ex[0]["path"] != "周杰伦 - 晴天.flac" || ex[1]["albumTag"] != ex[1]["album"] {
+		t.Fatalf("plain preview = %v", ex)
+	}
+	ex = get("template=" + url.QueryEscape("{artist} - {name}") + "&organizeByArtistAlbum=1&cleanAlbumEpisode=1")
+	if ex[0]["path"] != "周杰伦/叶惠美/周杰伦 - 晴天.flac" ||
+		ex[1]["path"] != "示例歌手/声生不息·家年华/示例歌手 - 示例歌曲.m4a" ||
+		ex[1]["albumTag"] != "声生不息·家年华" {
+		t.Fatalf("organized preview = %v", ex)
+	}
+	// 预览只读表单值，不改动已保存设置。
+	if s := core.GetWebSettings(); s.OrganizeByArtistAlbum || s.CleanAlbumEpisode {
+		t.Fatalf("preview changed saved settings: %+v", s)
+	}
+}
