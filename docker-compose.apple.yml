@@ -4,7 +4,10 @@
 services:
   music-dl:
     # 上游镜像不含 wrapper 支持，必须用本仓库代码构建。
+    # 另起本地镜像名并只从源码构建，避免 docker compose pull 用上游镜像顶掉。
     build: .
+    image: go-music-dl-fork:local
+    pull_policy: build
     environment:
       MUSIC_DL_APPLE_WRAPPER_URL: http://wrapper:12340
     depends_on: [wrapper]
