@@ -120,21 +120,29 @@ func FetchFullAppleAudio(song *model.Song) ([]byte, error) {
 // 且都走管理员的同一个 Apple 账号；/download 对匿名用户开放，不能无限并发。
 var appleDownloadSlots = make(chan struct{}, 2)
 
+// appleCDNHTTP 是下载 Apple CDN 播放列表和音频的客户端：响应头 30 秒内不到就失败；
+// 响应体不设总超时（整曲可能很大），卡住由 applemusic 的空闲超时和下面的 15 分钟总超时处理。
+var appleCDNHTTP = func() *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = 30 * time.Second
+	return &http.Client{Transport: t}
+}()
+
 // FetchFullAppleAudioContext 同 FetchFullAppleAudio，ctx 取消（如浏览器中止下载）时停止下载。
 func FetchFullAppleAudioContext(ctx context.Context, song *model.Song) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
-	defer cancel()
-
 	select {
 	case appleDownloadSlots <- struct{}{}:
 		defer func() { <-appleDownloadSlots }()
 	case <-ctx.Done():
 		return nil, fmt.Errorf("apple full download: %w", ctx.Err())
 	}
+	// 排队时间不计入总超时，从拿到下载名额开始算。
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
 
 	res, err := appleDownload(ctx, applemusic.DownloadOptions{
 		Client:      NewAppleWrapperClient(),
-		HTTP:        &http.Client{},
+		HTTP:        appleCDNHTTP,
 		AdamID:      song.ID,
 		Quality:     AppleAudioQuality(),
 		ALACMaxRate: appleALACMaxRate,
@@ -142,7 +150,7 @@ func FetchFullAppleAudioContext(ctx context.Context, song *model.Song) ([]byte, 
 	if err != nil {
 		return nil, fmt.Errorf("apple full download: %w", err)
 	}
-	data, err := remuxAppleMP4(res.Data)
+	data, err := remuxAppleMP4(ctx, res.Data)
 	if errors.Is(err, ErrFFmpegNotFound) {
 		return res.Data, nil
 	}
@@ -153,7 +161,7 @@ func FetchFullAppleAudioContext(ctx context.Context, song *model.Song) ([]byte, 
 }
 
 // remuxAppleMP4 把分片 MP4 无损重封装成普通 MP4（moov 在前）。
-func remuxAppleMP4(data []byte) ([]byte, error) {
+func remuxAppleMP4(ctx context.Context, data []byte) ([]byte, error) {
 	ffmpegPath, err := ResolveFFmpegPath()
 	if err != nil {
 		return nil, ErrFFmpegNotFound
@@ -169,7 +177,7 @@ func remuxAppleMP4(data []byte) ([]byte, error) {
 	if err := os.WriteFile(inPath, data, 0o600); err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(ffmpegPath, "-y", "-hide_banner", "-loglevel", "error",
+	cmd := exec.CommandContext(ctx, ffmpegPath, "-y", "-hide_banner", "-loglevel", "error",
 		"-i", inPath, "-map", "0:a:0", "-c", "copy", "-movflags", "+faststart", "-f", "mp4", outPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("ffmpeg remux: %w: %s", err, strings.TrimSpace(string(out)))

@@ -20,6 +20,9 @@ import (
 // A variable so tests can shorten it.
 var cdnIdleTimeout = 30 * time.Second
 
+// maxPreallocBytes caps the output preallocation taken from the playlist.
+const maxPreallocBytes = 1 << 30
+
 // DownloadOptions configures Download.
 type DownloadOptions struct {
 	Client      *Client
@@ -90,6 +93,13 @@ func Download(ctx context.Context, o DownloadOptions) (*Result, error) {
 	}
 
 	var out bytes.Buffer
+	// The clear file is about as large as the encrypted one, whose size the
+	// last byte range gives; preallocating avoids repeated doubling on ALAC.
+	if n := len(media.Segments); n > 0 {
+		if size := media.Segments[n-1].Offset + media.Segments[n-1].Length; size > 0 && size <= maxPreallocBytes {
+			out.Grow(int(size))
+		}
+	}
 	if err := downloadMedia(ctx, hc, media, &out, keys); err != nil {
 		return nil, err
 	}

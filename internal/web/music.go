@@ -1263,9 +1263,9 @@ func RegisterMusicRoutes(api, configAPI *gin.RouterGroup) {
 		}
 
 		if embedMeta {
-			result, err := core.DownloadSongDataWithTemplate(tempSong, true, true, settings.DownloadFilenameTemplate)
+			result, err := core.DownloadSongDataWithTemplateContext(c.Request.Context(), tempSong, true, true, settings.DownloadFilenameTemplate)
 			if err != nil {
-				c.String(502, "Upstream stream error")
+				c.String(502, embedDownloadErrorText(tempSong, err))
 				return
 			}
 			warnings := make([]string, 0, 2)
@@ -1893,7 +1893,7 @@ func switchCandidateSources(current string, target string) []string {
 	sources := make([]string, 0)
 	add := func(source string) {
 		source = strings.TrimSpace(source)
-		if source == "spotify" {
+		if source == "spotify" || source == "apple" {
 			return
 		}
 		if seen[source] || !isSwitchSourceAllowed(source, current) || switchSearchFuncProvider(source) == nil {

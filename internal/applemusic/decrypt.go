@@ -340,6 +340,10 @@ func decryptFragment(frag *mp4.Fragment, tracks map[uint32]mp4.DecryptTrackInfo,
 		if tenc.DefaultSkipByteBlock != 0 {
 			return fmt.Errorf("%w: crypt %d skip %d", ErrUnsupportedPattern, tenc.DefaultCryptByteBlock, tenc.DefaultSkipByteBlock)
 		}
+		// SampleDecrypter always starts from the constant IV; per-sample IVs would decrypt to noise.
+		if tenc.DefaultPerSampleIVSize != 0 {
+			return fmt.Errorf("%w: per-sample IV size %d", ErrUnsupportedScheme, tenc.DefaultPerSampleIVSize)
+		}
 
 		var senc *mp4.SencBox
 		hasSenc, parsed := traf.ContainsSencBox()

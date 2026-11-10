@@ -44,13 +44,29 @@ func serveAppleWrapperDownload(c *gin.Context, song *model.Song, settings core.W
 		c.String(502, "Apple full download error: "+err.Error())
 		return true
 	}
+	warnings := make([]string, 0, 2)
+	if result.Warning != "" {
+		warnings = append(warnings, result.Warning)
+	}
 	if core.WebDAVConfigured(settings) {
 		if err := core.UploadSongToWebDAV(settings, result.Filename, result.Data); err != nil {
-			c.Header("X-MusicDL-Warning", err.Error())
+			warnings = append(warnings, err.Error())
 		}
+	}
+	if len(warnings) > 0 {
+		c.Header("X-MusicDL-Warning", strings.Join(warnings, "; "))
 	}
 	// 不支持 Range：每次请求都要完整下载并解密，分段续传只会成倍重复下载。
 	setDownloadHeader(c, result.Filename)
 	c.Data(200, result.ContentType, result.Data)
 	return true
+}
+
+// embedDownloadErrorText 是 /download 内嵌元数据分支的出错文案：Apple 整曲下载沿用 Apple 分支的格式
+// （错误里的 CDN 地址已去掉查询参数），其他情况保持上游的 "Upstream stream error"。
+func embedDownloadErrorText(song *model.Song, err error) string {
+	if song.Source == "apple" && core.AppleWrapperConfigured() {
+		return "Apple full download error: " + err.Error()
+	}
+	return "Upstream stream error"
 }

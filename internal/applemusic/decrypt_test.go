@@ -286,6 +286,29 @@ func TestDecryptStreamUnsupportedPattern(t *testing.T) {
 	}
 }
 
+// The decrypter only knows the constant IV, so per-sample IVs must be rejected
+// instead of producing noise.
+func TestDecryptStreamPerSampleIVUnsupported(t *testing.T) {
+	fx := buildFixture(t, 0)
+	f, err := mp4.DecodeFile(bytes.NewReader(fx.file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stsd := f.Init.Moov.Trak.Mdia.Minf.Stbl.Stsd
+	tenc := stsd.Children[0].(*mp4.AudioSampleEntryBox).Sinf.Schi.Tenc
+	tenc.DefaultPerSampleIVSize = 16
+	tenc.DefaultConstantIV = nil
+	var buf bytes.Buffer
+	if err := f.Encode(&buf); err != nil {
+		t.Fatal(err)
+	}
+	ks := &countingKeys{calls: map[string]int{}, fx: fx}
+	err = DecryptStream(context.Background(), bytes.NewReader(buf.Bytes()), &bytes.Buffer{}, fx.segs, ks.source)
+	if !errors.Is(err, ErrUnsupportedScheme) || !strings.Contains(err.Error(), "per-sample IV") {
+		t.Fatalf("got %v, want ErrUnsupportedScheme for per-sample IV", err)
+	}
+}
+
 func TestDecryptStreamSegmentMismatch(t *testing.T) {
 	fx := buildFixture(t, 0)
 	ks := &countingKeys{calls: map[string]int{}, fx: fx}

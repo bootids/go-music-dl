@@ -171,10 +171,10 @@ FFmpeg 与 `ffprobe` 用于本地音乐探测和元数据写入。Docker 镜像�
 
 ```bash
 cp .env.example .env   # 填写 APPLE_ID_USERNAME 和 APPLE_ID_PASSWORD
-docker compose -f docker-compose.yml -f docker-compose.apple.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.apple.yml up -d --build
 ```
 
-`docker-compose.apple.yml` 是可选的覆盖文件：它会额外启动 `wrapper` 容器，并给 `music-dl` 设置 `MUSIC_DL_APPLE_WRAPPER_URL=http://wrapper:12340`。默认的 `docker-compose.yml` 不受影响。GHCR 镜像拉取失败时，可以把文件里的 `image:` 换成 `build: https://github.com/WorldObservationLog/wrapper.git#lite` 本地构建。
+`docker-compose.apple.yml` 是可选的覆盖文件：它会用本仓库代码构建 `music-dl` 镜像（上游镜像不含 wrapper 支持，所以命令里要带 `--build`），额外启动 `wrapper` 容器，并给 `music-dl` 设置 `MUSIC_DL_APPLE_WRAPPER_URL=http://wrapper:12340`。默认的 `docker-compose.yml` 不受影响。GHCR 镜像拉取失败时，可以把文件里的 `image:` 换成 `build: https://github.com/WorldObservationLog/wrapper.git#lite` 本地构建。
 
 **首次登录与两步验证**：第一次启动时 wrapper 会用 `.env` 里的账号登录。账号开启了两步验证时，请在 10 分钟内把收到的验证码写进 wrapper 的数据目录。该目录由 wrapper 容器设为 root 所有，Linux 下普通用户需要 `sudo`：
 

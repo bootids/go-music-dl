@@ -1,8 +1,10 @@
 # Apple Music 整曲下载（可选）。用法：
-#   docker compose -f docker-compose.yml -f docker-compose.apple.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.apple.yml up -d --build
 # 需要自己的有效 Apple Music 订阅；账号写在 .env 里（见 .env.example）。
 services:
   music-dl:
+    # 上游镜像不含 wrapper 支持，必须用本仓库代码构建。
+    build: .
     environment:
       MUSIC_DL_APPLE_WRAPPER_URL: http://wrapper:12340
     depends_on: [wrapper]

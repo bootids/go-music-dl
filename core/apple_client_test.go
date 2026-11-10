@@ -115,6 +115,24 @@ func TestAppleFetchSongAudioUsesWrapper(t *testing.T) {
 	}
 }
 
+// Without ffmpeg the full track stays a fragmented MP4; the download result must say so.
+func TestAppleDownloadWarnsWhenNotRemuxed(t *testing.T) {
+	setupAppleConfigForTest(t)
+	t.Setenv(AppleWrapperEnvURL, "http://127.0.0.1:1")
+	t.Setenv("MUSIC_DL_FFMPEG", filepath.Join(t.TempDir(), "missing-ffmpeg"))
+	stubAppleDownload(t, func(context.Context, applemusic.DownloadOptions) (*applemusic.Result, error) {
+		return &applemusic.Result{Data: []byte("fmp4"), Codec: "alac"}, nil
+	})
+
+	res, err := DownloadSongDataWithTemplateContext(context.Background(), &model.Song{Source: "apple", ID: "123", Name: "n", Artist: "a"}, false, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Warning, "Apple track not remuxed") {
+		t.Fatalf("warning = %q", res.Warning)
+	}
+}
+
 func TestAppleFetchSongAudioNoPreviewFallback(t *testing.T) {
 	setupAppleConfigForTest(t)
 	t.Setenv(AppleWrapperEnvURL, "http://127.0.0.1:1")
@@ -153,7 +171,7 @@ func TestAppleRemuxMP4(t *testing.T) {
 	}
 	t.Setenv("MUSIC_DL_FFMPEG", "")
 
-	out, err := remuxAppleMP4(buildClearFragmentedMP4(t))
+	out, err := remuxAppleMP4(context.Background(), buildClearFragmentedMP4(t))
 	if err != nil {
 		t.Fatalf("remuxAppleMP4: %v", err)
 	}

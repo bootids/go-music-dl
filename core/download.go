@@ -107,6 +107,7 @@ func downloadSongDataWithTemplate(ctx context.Context, song *model.Song, withCov
 			warning = "metadata embedding failed, using original audio"
 		}
 	}
+	warning = appendDownloadWarning(warning, appleRemuxWarning(&normalized))
 
 	if ext == "" {
 		ext = DetectAudioExt(finalData)

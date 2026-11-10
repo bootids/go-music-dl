@@ -1843,6 +1843,9 @@ func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, album, lyr
 	if ext == "mp3" {
 		args = append(args, "-id3v2_version", "3", "-write_id3v1", "1")
 	}
+	if ext == "m4a" || ext == "mp4" {
+		args = append(args, "-movflags", "+faststart")
+	}
 
 	args = append(args, outPath)
 

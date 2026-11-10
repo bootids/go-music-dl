@@ -147,6 +147,9 @@ type downloadEnv struct {
 	// wait pause before sending the rest.
 	pauseAt int64
 	pause   time.Duration
+	// stallAt > 0 makes the ALAC track handler send that many bytes, then
+	// block until the client goes away.
+	stallAt int64
 }
 
 // newDownloadEnv serves a 3-fragment encrypted track: fragments 0-1 use the
@@ -192,6 +195,12 @@ hires/media.m3u8
 	mux.HandleFunc("/alac/track.mp4", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Range") != "" {
 			http.Error(w, "unexpected Range", http.StatusBadRequest)
+			return
+		}
+		if env.stallAt > 0 {
+			_, _ = w.Write(fx.File[:env.stallAt])
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
 			return
 		}
 		if env.pauseAt > 0 {
@@ -324,6 +333,28 @@ func TestDownloadSlowKeyIsNotStall(t *testing.T) {
 	}
 	if _, err := applemusic.Download(context.Background(), env.opts); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A CDN that stops sending mid-file must fail the download, not hang it.
+func TestDownloadCDNStallTimesOut(t *testing.T) {
+	env := newDownloadEnv(t)
+	applemusic.SetCDNIdleTimeout(t, 50*time.Millisecond)
+	ranges := topLevelFragments(t, env.fx.File)
+	env.stallAt = ranges[1][0] + ranges[1][1] // init + first fragment
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := applemusic.Download(context.Background(), env.opts)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "stalled") {
+			t.Fatalf("got %v, want a stalled error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("download did not time out")
 	}
 }
 

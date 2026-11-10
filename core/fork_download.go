@@ -42,3 +42,15 @@ func fetchAppleWrapperAudio(ctx context.Context, song *model.Song) (data []byte,
 	}
 	return data, "audio/mp4", true, nil
 }
+
+// appleRemuxWarning 是 downloadSongDataWithTemplate 的钩子：wrapper 整曲下载在没有 ffmpeg 时
+// 返回的是未重封装的分片 MP4（见 FetchFullAppleAudioContext），通过下载结果的 Warning 提示用户。
+func appleRemuxWarning(song *model.Song) string {
+	if song.Source != "apple" || !AppleWrapperConfigured() {
+		return ""
+	}
+	if _, err := ResolveFFmpegPath(); err != nil {
+		return "ffmpeg not found, Apple track not remuxed"
+	}
+	return ""
+}
