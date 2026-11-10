@@ -1709,6 +1709,8 @@ func serveLocalMusicLyric(c *gin.Context, song *model.Song, download bool, saveL
 		return
 	}
 
+	// 文件里存的是增强 LRC（<mm:ss.xx> 逐字）时，转成播放器使用的行内逐字格式。
+	lyrics = core.EnhancedToInlineVerbatim(lyrics)
 	lyrics = formatLyricForMode(lyrics, c.DefaultQuery("format", "auto"))
 	c.Header("X-Lyric-Format", classifyLyricFormat(lyrics))
 	if download {

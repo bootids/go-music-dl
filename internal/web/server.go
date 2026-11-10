@@ -755,6 +755,7 @@ func StartWithOptions(port string, opts StartOptions) {
 	RegisterQRLoginRoutes(configAPI)
 	RegisterCollectionRoutes(api)
 	RegisterLocalMusicRoutes(api)
+	RegisterLocalLyricRoutes(api, configAPI)
 	RegisterVideogenRoutes(api, videoDir)
 	RegisterUpdateRoutes(api)
 

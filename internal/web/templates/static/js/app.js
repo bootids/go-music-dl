@@ -3619,6 +3619,9 @@ function renderLocalMusicPageCard(track) {
                     <div class="action-more-menu" role="menu" hidden>
                         ${lyricButton || '<span class="btn-circle btn-dl btn-lyric is-disabled" title="暂无歌词" aria-disabled="true"><i class="fa-solid fa-file-lines"></i></span>'}
                         ${coverButton || '<span class="btn-circle btn-dl btn-cover is-disabled" title="暂无封面" aria-disabled="true"><i class="fa-regular fa-image"></i></span>'}
+                        <button type="button" class="btn-circle btn-dl btn-lyric-verbatim" title="找逐字歌词" onclick="openLyricUpgradeFromButton(this)">
+                            <i class="fa-solid fa-microphone-lines"></i>
+                        </button>
                         <button type="button" class="btn-circle btn-delete-local" title="删除本地音乐" onclick="deleteLocalMusicFromButton(this)">
                             <i class="fa-solid fa-trash"></i>
                         </button>
@@ -10637,4 +10640,391 @@ async function removePlaybackQueueTrack(index) {
   syncPlayerTrackControls();
   try { await savePlaybackQueueNow(); }
   catch (error) { reportPlaybackSessionError(error); }
+}
+
+// ---------------------------------------------------------------------------
+// 歌词检查：识别本地歌曲歌词类型，逐行歌词可从 QQ 音乐换成逐字并写回文件。
+// ---------------------------------------------------------------------------
+const LYRIC_KIND_LABELS = {
+  verbatim: "逐字",
+  line: "逐行",
+  plain: "无时间",
+  none: "无歌词",
+};
+const LYRIC_CHECK_FILTERS = ["line", "none", "plain", "verbatim", "all"];
+const lyricCheckState = { tracks: [], counts: {}, filter: "line" };
+
+function lyricEl(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined && text !== null) el.textContent = String(text);
+  return el;
+}
+
+function lyricKindBadge(kind) {
+  return lyricEl("span", `lyric-kind-badge is-${kind || "none"}`, LYRIC_KIND_LABELS[kind] || "未知");
+}
+
+function ensureLyricCheckModal() {
+  let overlay = document.getElementById("lyric-check-modal-overlay");
+  if (overlay) return overlay;
+  overlay = lyricEl("div", "modal-overlay utility-modal-overlay is-open");
+  overlay.id = "lyric-check-modal-overlay";
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeLyricCheckModal();
+  });
+  const modal = lyricEl("div", "modal utility-modal lyric-check-modal");
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-labelledby", "lyric-check-title");
+  const header = lyricEl("div", "modal-header");
+  const titleWrap = lyricEl("div");
+  const title = lyricEl("h3");
+  title.id = "lyric-check-title";
+  title.innerHTML = '<i class="fa-solid fa-microphone-lines"></i> ';
+  title.append(lyricEl("span", "lyric-check-title-text", "歌词检查"));
+  const subtitle = lyricEl("p", "utility-modal-subtitle lyric-check-subtitle");
+  titleWrap.append(title, subtitle);
+  const close = lyricEl("button", "modal-close");
+  close.type = "button";
+  close.setAttribute("aria-label", "关闭歌词检查");
+  close.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  close.addEventListener("click", closeLyricCheckModal);
+  header.append(titleWrap, close);
+  const body = lyricEl("div", "modal-body lyric-check-body");
+  modal.append(header, body);
+  overlay.append(modal);
+  document.body.append(overlay);
+  document.addEventListener("keydown", lyricCheckEscHandler);
+  return overlay;
+}
+
+function lyricCheckEscHandler(e) {
+  if (e.key === "Escape") closeLyricCheckModal();
+}
+
+function closeLyricCheckModal() {
+  document.getElementById("lyric-check-modal-overlay")?.remove();
+  document.removeEventListener("keydown", lyricCheckEscHandler);
+}
+
+function setLyricCheckHeader(titleText, subtitleText) {
+  const overlay = ensureLyricCheckModal();
+  overlay.querySelector(".lyric-check-title-text").textContent = titleText;
+  overlay.querySelector(".lyric-check-subtitle").textContent = subtitleText;
+  return overlay.querySelector(".lyric-check-body");
+}
+
+function lyricCheckStateMessage(body, icon, text, isError = false) {
+  const box = lyricEl("div", `lyric-check-state${isError ? " is-error" : ""}`);
+  const i = lyricEl("i", icon);
+  box.append(i, lyricEl("div", "", text));
+  body.replaceChildren(box);
+}
+
+async function lyricCheckFetchJSON(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  return { ok: response.ok, status: response.status, payload };
+}
+
+async function openLyricCheckModal(refresh = false) {
+  const body = setLyricCheckHeader("歌词检查", "识别下载目录里每首歌的歌词类型；逐行歌词可从 QQ 音乐换成逐字");
+  lyricCheckStateMessage(body, "fa-solid fa-spinner fa-spin", "正在读取本地歌词...");
+  const { ok, payload } = await lyricCheckFetchJSON(
+    `${API_ROOT}/local_music/lyric_check${refresh ? "?refresh=1" : ""}`,
+  );
+  if (!document.getElementById("lyric-check-modal-overlay")) return;
+  if (!ok) {
+    lyricCheckStateMessage(body, "fa-solid fa-circle-exclamation", payload.error || "读取失败", true);
+    return;
+  }
+  lyricCheckState.tracks = Array.isArray(payload.tracks) ? payload.tracks : [];
+  lyricCheckState.counts = payload.counts || {};
+  renderLyricCheckList();
+}
+
+function renderLyricCheckList() {
+  const body = setLyricCheckHeader("歌词检查", "识别下载目录里每首歌的歌词类型；逐行歌词可从 QQ 音乐换成逐字");
+  const toolbar = lyricEl("div", "utility-modal-toolbar lyric-check-toolbar");
+  const chips = lyricEl("div", "lyric-check-filters");
+  chips.setAttribute("role", "tablist");
+  LYRIC_CHECK_FILTERS.forEach((filter) => {
+    const count =
+      filter === "all" ? lyricCheckState.tracks.length : lyricCheckState.counts[filter] || 0;
+    if (filter !== "all" && filter !== "line" && count === 0) return;
+    const chip = lyricEl("button", `lyric-check-filter${lyricCheckState.filter === filter ? " is-active" : ""}`);
+    chip.type = "button";
+    chip.setAttribute("role", "tab");
+    chip.setAttribute("aria-selected", lyricCheckState.filter === filter ? "true" : "false");
+    chip.append(lyricEl("span", "", filter === "all" ? "全部" : LYRIC_KIND_LABELS[filter]), lyricEl("span", "lyric-check-filter-count", count));
+    chip.addEventListener("click", () => {
+      lyricCheckState.filter = filter;
+      renderLyricCheckList();
+    });
+    chips.append(chip);
+  });
+  const rescan = lyricEl("button", "btn-pill lyric-check-rescan");
+  rescan.type = "button";
+  rescan.innerHTML = '<i class="fa-solid fa-rotate"></i> 重新扫描';
+  rescan.addEventListener("click", () => openLyricCheckModal(true));
+  toolbar.append(chips, rescan);
+
+  const list = lyricEl("div", "utility-modal-list lyric-check-list");
+  const filtered = lyricCheckState.tracks.filter(
+    (t) => lyricCheckState.filter === "all" || t.kind === lyricCheckState.filter,
+  );
+  if (!filtered.length) {
+    const empty = lyricEl("div", "lyric-check-state is-clean");
+    empty.append(
+      lyricEl("i", "fa-solid fa-circle-check"),
+      lyricEl("div", "", lyricCheckState.filter === "line" ? "没有逐行歌词的歌曲" : "这一类没有歌曲"),
+    );
+    list.append(empty);
+  }
+  filtered.forEach((track) => {
+    const row = lyricEl("div", "lyric-check-row");
+    const main = lyricEl("div", "lyric-check-row-main");
+    main.append(
+      lyricEl("div", "lyric-check-row-name", track.name),
+      lyricEl("div", "lyric-check-row-meta", [track.artist, track.album].filter(Boolean).join(" · ")),
+    );
+    const side = lyricEl("div", "lyric-check-row-side");
+    side.append(lyricEl("span", "lyric-check-row-duration", formatDuration(track.duration)), lyricKindBadge(track.kind));
+    const action = lyricEl("button", "btn-pill lyric-check-row-action");
+    action.type = "button";
+    if (!track.writable) {
+      action.disabled = true;
+      action.title = `${(track.ext || "").toUpperCase()} 文件不支持写入内嵌歌词`;
+      action.textContent = "不支持";
+    } else {
+      action.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> ';
+      action.append(document.createTextNode(track.kind === "verbatim" ? "重新查找" : "找逐字歌词"));
+      action.addEventListener("click", () => openLyricCandidates(track.id, true));
+    }
+    side.append(action);
+    row.append(main, side);
+    list.append(row);
+  });
+  body.replaceChildren(toolbar, list);
+}
+
+function openLyricUpgradeFromButton(button) {
+  const card = button?.closest?.(".song-card");
+  const id = card?.dataset?.id;
+  closeSongActionMenus();
+  if (!id) return;
+  ensureLyricCheckModal();
+  openLyricCandidates(id, false);
+}
+
+function lyricDiffLabel(candidate) {
+  if (candidate.diff === null || candidate.diff === undefined) {
+    return { text: "时长未知", cls: "is-unknown" };
+  }
+  if (candidate.match) return { text: "时长一致", cls: "is-match" };
+  const sign = candidate.diff > 0 ? "+" : "";
+  return { text: `相差 ${sign}${candidate.diff} 秒`, cls: "is-mismatch" };
+}
+
+async function openLyricCandidates(id, fromList, keyword = "") {
+  const body = setLyricCheckHeader("找逐字歌词", "从 QQ 音乐选择同一首歌；时长一致可直接嵌入");
+  lyricCheckStateMessage(body, "fa-solid fa-spinner fa-spin", "正在搜索 QQ 音乐...");
+  const query = new URLSearchParams({ id });
+  if (keyword) query.set("q", keyword);
+  const { ok, payload } = await lyricCheckFetchJSON(`${API_ROOT}/local_music/lyric_candidates?${query}`);
+  if (!document.getElementById("lyric-check-modal-overlay")) return;
+  const local = payload.local || {};
+  const view = lyricEl("div", "lyric-candidates");
+
+  if (fromList) {
+    const back = lyricEl("button", "lyric-check-back");
+    back.type = "button";
+    back.innerHTML = '<i class="fa-solid fa-arrow-left"></i> 返回列表';
+    back.addEventListener("click", renderLyricCheckList);
+    view.append(back);
+  }
+
+  const summary = lyricEl("div", "lyric-local-summary");
+  const summaryMain = lyricEl("div", "lyric-local-summary-main");
+  summaryMain.append(
+    lyricEl("div", "lyric-local-summary-name", local.name || "本地歌曲"),
+    lyricEl("div", "lyric-local-summary-meta", [local.artist, local.album].filter(Boolean).join(" · ")),
+  );
+  const summarySide = lyricEl("div", "lyric-local-summary-side");
+  summarySide.append(lyricEl("span", "lyric-local-summary-duration", `本地 ${formatDuration(local.duration)}`), lyricKindBadge(local.kind));
+  summary.append(summaryMain, summarySide);
+
+  const form = lyricEl("form", "lyric-search-form");
+  const input = lyricEl("input", "lyric-search-input");
+  input.type = "search";
+  input.value = payload.keyword || keyword || "";
+  input.setAttribute("aria-label", "QQ 音乐搜索关键词");
+  const submit = lyricEl("button", "btn-pill btn-pill-primary");
+  submit.type = "submit";
+  submit.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> 搜索';
+  form.append(input, submit);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    openLyricCandidates(id, fromList, input.value.trim());
+  });
+  view.append(summary, form);
+
+  const list = lyricEl("div", "utility-modal-list lyric-candidate-list");
+  const preview = lyricEl("div", "lyric-preview");
+  preview.hidden = true;
+  if (!ok) {
+    lyricCheckStateMessage(list, "fa-solid fa-circle-exclamation", payload.error || "搜索失败", true);
+  } else if (!payload.candidates?.length) {
+    lyricCheckStateMessage(list, "fa-regular fa-face-meh", "没有搜到候选，换个关键词试试");
+  } else {
+    payload.candidates.forEach((candidate) => {
+      list.append(renderLyricCandidateRow(id, local, candidate, payload.tolerance, preview, fromList));
+    });
+  }
+  view.append(list, preview);
+  body.replaceChildren(view);
+  if (!ok || !payload.candidates?.length) input.focus();
+}
+
+function renderLyricCandidateRow(id, local, candidate, tolerance, preview, fromList) {
+  const row = lyricEl("div", "lyric-candidate-row");
+  const main = lyricEl("button", "lyric-candidate-main");
+  main.type = "button";
+  main.title = "预览歌词";
+  main.append(
+    lyricEl("span", "lyric-candidate-name", candidate.name),
+    lyricEl("span", "lyric-candidate-meta", [candidate.artist, candidate.album].filter(Boolean).join(" · ")),
+  );
+  main.addEventListener("click", () => showLyricPreview(id, local, candidate, preview, fromList, row));
+  const diff = lyricDiffLabel(candidate);
+  const side = lyricEl("div", "lyric-candidate-side");
+  side.append(
+    lyricEl("span", "lyric-candidate-duration", formatDuration(candidate.duration)),
+    lyricEl("span", `lyric-diff-badge ${diff.cls}`, diff.text),
+  );
+  const action = lyricEl("button", `btn-pill ${candidate.match ? "btn-pill-primary" : ""} lyric-candidate-action`);
+  action.type = "button";
+  if (local.writable === false) {
+    action.disabled = true;
+    action.textContent = "不支持";
+  } else if (candidate.match) {
+    action.textContent = "嵌入";
+    action.addEventListener("click", () => applyLyricCandidate(id, candidate, false, action, fromList));
+  } else {
+    action.textContent = "预览";
+    action.addEventListener("click", () => showLyricPreview(id, local, candidate, preview, fromList, row));
+  }
+  side.append(action);
+  row.append(main, side);
+  return row;
+}
+
+async function showLyricPreview(id, local, candidate, preview, fromList, row) {
+  row.parentElement?.querySelectorAll(".lyric-candidate-row.is-selected").forEach((el) => el.classList.remove("is-selected"));
+  row.classList.add("is-selected");
+  preview.hidden = false;
+  lyricCheckStateMessage(preview, "fa-solid fa-spinner fa-spin", "正在获取歌词...");
+  const { ok, payload } = await lyricCheckFetchJSON(`${API_ROOT}/local_music/lyric_preview`, {
+    method: "POST",
+    body: JSON.stringify(candidate),
+  });
+  if (!row.classList.contains("is-selected")) return;
+  if (!ok) {
+    lyricCheckStateMessage(preview, "fa-solid fa-circle-exclamation", payload.error || "获取歌词失败", true);
+    return;
+  }
+  const head = lyricEl("div", "lyric-preview-head");
+  head.append(lyricEl("span", "lyric-preview-title", `${[candidate.name, candidate.artist].filter(Boolean).join(" · ")} 的歌词`), lyricKindBadge(payload.kind));
+  const lines = lyricEl("div", "lyric-preview-lines");
+  const textLines = String(payload.lyric || "")
+    .split("\n")
+    .map((line) => ({
+      start: (line.match(/^\[(\d+:\d+(?:\.\d+)?)\]/) || [])[1] || "",
+      text: line.replace(/\[[^\]]*\]/g, "").trim(),
+    }))
+    .filter((line) => line.start && line.text)
+    // 预览只看正文：跳过开头的“歌名 - 歌手”和“词：/曲：/编曲：”等署名行（写入的歌词不受影响）。
+    .filter((line, index) => !(index === 0 && / - /.test(line.text)) && !/^[^：:]{1,40}[：:]/.test(line.text));
+  let shown = 0;
+  let lastStart = "";
+  for (const line of textLines) {
+    const isTranslation = line.start === lastStart;
+    if (!isTranslation && shown >= 8) break;
+    lines.append(lyricEl("div", `lyric-preview-line${isTranslation ? " is-translation" : ""}`, line.text));
+    if (!isTranslation) shown += 1;
+    lastStart = line.start;
+  }
+  if (textLines.length > shown) lines.append(lyricEl("div", "lyric-preview-more", "…"));
+  const footer = lyricEl("div", "lyric-preview-footer");
+  const diff = lyricDiffLabel(candidate);
+  if (!candidate.match) {
+    footer.append(
+      lyricEl(
+        "span",
+        "lyric-preview-warning",
+        diff.cls === "is-unknown"
+          ? "读不到本地时长，无法确认是同一版本"
+          : `与本地时长${diff.text}，可能不是同一版本`,
+      ),
+    );
+  }
+  const apply = lyricEl("button", `btn-pill ${candidate.match ? "btn-pill-primary" : "lyric-force-button"}`);
+  apply.type = "button";
+  apply.textContent = candidate.match ? "嵌入歌词" : "仍然嵌入";
+  if (local.writable === false) {
+    apply.disabled = true;
+    apply.textContent = "该格式不支持写入";
+  }
+  apply.addEventListener("click", () => applyLyricCandidate(id, candidate, !candidate.match, apply, fromList));
+  footer.append(apply);
+  preview.replaceChildren(head, lines, footer);
+  // 预览在候选列表下方，滚到可见，确保“嵌入”按钮不用手动找。
+  preview.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+async function applyLyricCandidate(id, candidate, force, button, fromList) {
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "正在写入...";
+  const { ok, status, payload } = await lyricCheckFetchJSON(`${API_ROOT}/local_music/lyric_apply`, {
+    method: "POST",
+    body: JSON.stringify({ id, candidate, force }),
+  });
+  if (!ok) {
+    button.disabled = false;
+    button.textContent = label;
+    if (status === 409) {
+      showToast("时长不一致", "请先预览确认是同一版本，再选择“仍然嵌入”。", "warning", 6000);
+    } else if (status === 401) {
+      showToast("需要登录", "写入歌词需要管理员登录。", "error", 6000);
+    } else {
+      showToast("嵌入失败", payload.error || `HTTP ${status}`, "error", 8000);
+    }
+    return;
+  }
+  showToast(
+    "已嵌入逐字歌词",
+    payload.sidecar ? "同名 .lrc 已一并替换，旧文件备份为 .lrc.bak。" : "歌词已写入歌曲文件。",
+    "success",
+    5000,
+  );
+  const track = lyricCheckState.tracks.find((t) => t.id === id);
+  if (track && payload.kind) {
+    if (lyricCheckState.counts[track.kind]) lyricCheckState.counts[track.kind] -= 1;
+    track.kind = payload.kind;
+    lyricCheckState.counts[track.kind] = (lyricCheckState.counts[track.kind] || 0) + 1;
+  }
+  if (fromList) {
+    renderLyricCheckList();
+  } else {
+    closeLyricCheckModal();
+  }
 }

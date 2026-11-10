@@ -62,6 +62,9 @@
                 <label class="ctrl-btn local-music-upload-button is-folder" for="localMusicPageFolderInput">
                     <i class="fa-solid fa-folder-plus"></i> 上传文件夹
                 </label>
+                <button type="button" class="ctrl-btn local-music-upload-button is-folder" onclick="openLyricCheckModal()">
+                    <i class="fa-solid fa-microphone-lines"></i> 歌词检查
+                </button>
             </span>
             <input id="localMusicPageFileInput" type="file" multiple accept=".mp3,.flac,.m4a,.ogg,.wav,.wma,.aac,audio/*" onchange="uploadLocalMusicFile(this)" hidden>
             <input id="localMusicPageFolderInput" type="file" multiple webkitdirectory directory accept=".mp3,.flac,.m4a,.ogg,.wav,.wma,.aac,audio/*" onchange="uploadLocalMusicFile(this)" hidden>
@@ -290,6 +293,10 @@
                         </span>
                         {{ end }}
 
+                        <button type="button" class="btn-circle btn-dl btn-lyric-verbatim" title="找逐字歌词"
+                                onclick="openLyricUpgradeFromButton(this)">
+                            <i class="fa-solid fa-microphone-lines"></i>
+                        </button>
                         <button type="button" class="btn-circle btn-delete-local" title="删除本地音乐"
                                 onclick="deleteLocalMusicFromButton(this)">
                             <i class="fa-solid fa-trash"></i>
@@ -368,6 +375,10 @@
                         {{ end }}
 
                         {{ if and $isLocalSong (eq $.ColID "") }}
+                        <button type="button" class="btn-circle btn-dl btn-lyric-verbatim" title="找逐字歌词"
+                                onclick="openLyricUpgradeFromButton(this)">
+                            <i class="fa-solid fa-microphone-lines"></i>
+                        </button>
                         <button type="button" class="btn-circle btn-delete-local" title="删除本地音乐"
                                 onclick="deleteLocalMusicFromButton(this)">
                             <i class="fa-solid fa-trash"></i>
