@@ -1725,7 +1725,7 @@ func EmbedSongMetadata(audioData []byte, song *model.Song, lyric string, coverDa
 		artist = strings.TrimSpace(song.Artist)
 		album = strings.TrimSpace(song.Album)
 	}
-	albumArtist := albumArtistForSong(song)
+	extraTags := forkExtraTagsForSong(song)
 	lyric = strings.TrimSpace(lyric)
 	coverMime = normalizeCoverMime(coverMime)
 	incomingCover := len(coverData) > 0
@@ -1761,13 +1761,13 @@ func EmbedSongMetadata(audioData []byte, song *model.Song, lyric string, coverDa
 	}
 
 	if ext == "mp3" {
-		return embedMP3ID3v23Metadata(audioData, title, artist, album, albumArtist, lyric, coverData, coverMime)
+		return embedMP3ID3v23Metadata(audioData, title, artist, album, extraTags.AlbumArtist, lyric, coverData, coverMime)
 	}
 
-	return embedAudioMetadataByFFmpeg(audioData, ext, title, artist, album, albumArtist, lyric, coverData, coverMime)
+	return embedAudioMetadataByFFmpeg(audioData, ext, title, artist, album, lyric, coverData, coverMime, extraTags)
 }
 
-func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, album, albumArtist, lyric string, coverData []byte, coverMime string) ([]byte, error) {
+func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, album, lyric string, coverData []byte, coverMime string, extraTags forkExtraTags) ([]byte, error) {
 	ffmpegPath, err := ResolveFFmpegPath()
 	if err != nil {
 		return nil, ErrFFmpegNotFound
@@ -1839,7 +1839,7 @@ func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, album, alb
 	if album != "" {
 		args = append(args, "-metadata", "album="+album)
 	}
-	args = append(args, albumArtistFFmpegArgs(ext, albumArtist)...)
+	args = append(args, extraTags.ffmpegArgs(ext)...)
 	if lyric != "" {
 		args = append(args, "-metadata", "lyrics="+lyric)
 	}

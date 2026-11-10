@@ -9,11 +9,15 @@ import (
 	"github.com/guohuiyuan/music-lib/model"
 )
 
-// albumArtistForSong 是 EmbedSongMetadata 的钩子：返回要写入的专辑艺人，即歌曲自带的歌手名。
+// albumArtistForSong 返回要写入的专辑艺人：默认是歌曲自带的歌手名；
+// Apple 歌曲查到了与歌手不同的专辑艺人（如合辑的 Various Artists）时用查到的值（见 fork_apple_track_tags.go）。
 // 歌手为空时（如给本地文件换歌词）返回空串，不碰文件里已有的专辑艺人。
 func albumArtistForSong(song *model.Song) string {
-	if song == nil {
+	if song == nil || strings.TrimSpace(song.Artist) == "" {
 		return ""
+	}
+	if albumArtist := strings.TrimSpace(song.Extra[extraTagAlbumArtist]); albumArtist != "" {
+		return albumArtist
 	}
 	return strings.TrimSpace(song.Artist)
 }
@@ -28,7 +32,7 @@ func albumArtistID3Frame(albumArtist string, replaceFrames map[string]bool) []by
 	return id3v23Frame("TPE2", id3TextFramePayload(albumArtist))
 }
 
-// albumArtistFFmpegArgs 是 embedAudioMetadataByFFmpeg 的钩子：albumArtist 非空时追加写专辑艺人的参数。
+// albumArtistFFmpegArgs 由 forkExtraTags.ffmpegArgs 调用：albumArtist 非空时追加写专辑艺人的参数。
 // FLAC 里旧文件可能用 “ALBUM ARTIST” 这种带空格的键，-map_metadata 0 会把它原样带过来，
 // 和新写的 ALBUMARTIST 并存，所以一并清掉。
 func albumArtistFFmpegArgs(ext, albumArtist string) []string {
