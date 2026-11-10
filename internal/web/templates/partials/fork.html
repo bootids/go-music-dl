@@ -30,6 +30,11 @@
                     </label>
                     <p class="setting-hint">如 <code>声生不息·家年华 (第九期 live)</code> → <code>声生不息·家年华</code>，同时作用于专辑目录、<code>{album}</code> 和文件内的专辑标签。<code>(Live)</code>、<code>(Deluxe)</code> 等版本说明保留。</p>
                 </div>
+                <div class="cookie-item">
+                    <label for="setting-artist-aliases">歌手别名</label>
+                    <textarea id="setting-artist-aliases" rows="3" aria-describedby="setting-artist-aliases-hint" placeholder="宇多田光 = Utada, Hikaru Utada, 宇多田ヒカル"></textarea>
+                    <p id="setting-artist-aliases-hint" class="setting-hint" style="margin-left: 0;">每行一条：标准名 = 别名1, 别名2。下载时把别名统一成标准名，标签和目录都生效；只匹配完整歌手名，合唱不拆分。</p>
+                </div>
                 <div class="cookie-item setting-item">
                     <label class="setting-toggle" for="setting-normalize-chinese-variants">
                         <input type="checkbox" id="setting-normalize-chinese-variants">

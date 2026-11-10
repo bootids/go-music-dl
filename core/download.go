@@ -90,6 +90,9 @@ func downloadSongDataWithTemplate(ctx context.Context, song *model.Song, withCov
 		coverData, coverMime, _ = FetchBytesWithMime(normalized.Cover, normalized.Source)
 	}
 
+	// 音频、歌词、封面都按来源原本的歌手名取完后再换成标准名，标签、文件名和目录都用标准名。
+	normalized.Artist = ApplyArtistAlias(normalized.Artist, GetWebSettings().ArtistAliases)
+
 	finalData := audioData
 	warning := ""
 	lyricForEmbedding := ""
